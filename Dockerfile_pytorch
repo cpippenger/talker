@@ -1,0 +1,73 @@
+FROM pytorch/pytorch:latest
+
+# Copy custom jupter confid
+COPY Source/custom/ /root/.jupyter/
+
+WORKDIR /
+COPY cudnn-10.2-linux-x64-v8.2.0.53.tgz /
+RUN tar -xzvf /cudnn-10.2-linux-x64-v8.2.0.53.tgz && \
+   mkdir -p /usr/local/cuda/include && \
+   mkdir -p /usr/local/cuda/lib64 && \
+   cp cuda/include/cudnn.h /usr/local/cuda/include && \
+   cp cuda/lib64/libcudnn* /usr/local/cuda/lib64 && \
+   chmod a+r /usr/local/cuda/include/cudnn.h /usr/local/cuda/lib64/libcudnn*
+
+# 1. installing python2 and python3
+RUN apt-get update && apt-get install -y software-properties-common
+RUN apt-get update && \
+    apt install -y --no-install-recommends python3-pip python-pip python3 python
+# 1.1 uppgrade pip and pip3
+RUN pip3 install --upgrade pip setuptools && pip install --upgrade pip
+
+# Ubuntu packages + Numpy
+RUN apt-get update \
+     && apt-get install -y --no-install-recommends \
+        apt-utils \
+        build-essential \
+        g++  \
+        git  \
+        curl  \
+        cmake \
+        zlib1g-dev \
+        libjpeg-dev \
+        xvfb \
+        ffmpeg \
+        xorg-dev \
+        libboost-all-dev \
+        libsdl2-dev \
+        swig \
+        python3 \
+        python3-setuptools  \
+        python3-wheel  \
+        python3-tk \
+        libopenblas-base  \
+        libatlas-base-dev  \
+
+     && apt-get clean \
+     && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip
+
+# Install Python packages - Step 1
+COPY requirements_1.txt /tmp/
+RUN python3 -m pip install -r /tmp/requirements_1.txt
+
+RUN apt-get install nvidia-cuda-toolkit
+
+RUN apt-get update && apt-get install -y x11vnc xvfb fluxbox wmctrl
+RUN apt-get clean
+
+# Enable jupyter widgets
+RUN jupyter nbextension enable --py --sys-prefix widgetsnbextension
+
+EXPOSE 3141
+EXPOSE 8888
+EXPOSE 6901
+EXPOSE 5901
+EXPOSE 5900
+EXPOSE 22
+
+COPY run.sh /
+CMD chmod +x /run.sh
+ENTRYPOINT ["sh", "/run.sh"]
