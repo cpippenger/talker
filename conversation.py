@@ -10,12 +10,13 @@ from comment import Comment
 
 
 class Conversation():
-    def __init__(self, robot):
+    def __init__(self, robot, is_debug=True):
         self.robot = robot        
         self.humans = []
         self.chat_histories = {}
         self.chat_buffer_size = 4
         self.sentiment = Sentiment()
+        self.is_debug = is_debug
         
     def __repr__(self):
         out_str =  f"Converstaion():\n"
@@ -46,6 +47,7 @@ class Conversation():
             return False
         self.humans.append(human)
         self.chat_histories[human.name] = ChatHistory(self.robot.name, human.name)
+        
         return True
     
     def build_prompt(self,
@@ -89,10 +91,11 @@ class Conversation():
         # Robot name prompt
         prompt += f"{self.robot.name}:"
         
-        print (f"prompt:")
-        print ("-"*100)
-        print (prompt)
-        print ("-"*100)
+        if self.is_debug:
+            print (f"prompt:")
+            print ("-"*100)
+            print (prompt)
+            print ("-"*100)
         
         return prompt
     
@@ -125,7 +128,7 @@ class Conversation():
         # Check for certain trigger words
         # If asked for a long story
         if "long story" in comment:
-            response_length_modifier = 1024
+            response_length_modifier = 128
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(comment)
@@ -138,32 +141,28 @@ class Conversation():
         # Randomize length of response
         min_len = 128 + int(128 * random()) + response_length_modifier
         max_len = 256 + int(128 * random()) + response_length_modifier
-        #print (f"min_len = {min_len}")
-        #print (f"max_len = {max_len}")
+        print (f"process_comment(): min_len = {min_len}, max_len = {max_len}")
         # Generate output from the robot given the prompt
         output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
         # Maybe retry generating output if it did not meet requirements
-        #retry_count = 4
-        #retry = 0
-        #should_retry = False
-        #if len(output) < min_allowed_respose_len:
-        #    print (f"output not long enough len(output) = {len(output)} ")
-        #    should_retry = True
-        #if should_retry or "Persona:" in output:
-        #    print (f"output contains Persona:")
-        #    should_retry = True
-        #while retry < retry_count and should_retry:
-        #    print (f"output = {output}")
-        #    print (f"regenerating {retry}")
-        #    retry += 1
-        #    output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
+        retry_count = 4
+        retry = 0
+        should_retry = False
+        if len(output) < min_allowed_respose_len:
+            print (f"output not long enough len(output) = {len(output)} ")
+            should_retry = True
+        while retry < retry_count and should_retry:
+            print (f"output = {output}")
+            print (f"regenerating {retry}")
+            retry += 1
+            output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
         
         # Text to speech output 
         wav, rate = self.robot.read_response(output)
         
         # If should speak response
         if is_speak_response:
-            IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=False))
+            IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(output)
@@ -177,7 +176,7 @@ class Conversation():
             comment = self.chat_histories[commentor].dialogue[-3]
             response = self.chat_histories[commentor].dialogue[-2]
             human.add_memory(Memory(prompt, comment, response))
-            
+        
         
         return output, wav, rate
     

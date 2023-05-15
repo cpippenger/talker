@@ -3,7 +3,7 @@ import torch
 import transformers
 from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
-from numpy.random import random
+from numpy.random import random, choice
 from fairseq.checkpoint_utils import load_model_ensemble_and_task_from_hf_hub
 from fairseq.models.text_to_speech.hub_interface import TTSHubInterface
 
@@ -16,13 +16,18 @@ class Robot():
     def __init__(self, 
                  name:str,
                  persona:str,
-                 model_name:str="PygmalionAI/pygmalion-6b"
+                 model_name:str="PygmalionAI/pygmalion-6b",
+                 model_file:str=None,
+                 is_debug=False
                 ):
         print (f"Robot(name={name}, persona={persona}, model_name={model_name})")
         self.name = name
         self.persona = persona
         self.prompt_spices = ["Say it to me sexy.", "You horny puppet."]
         self.prompt_emotions = ["positive", "negative"]
+        self.filter_words = ["kill", "die", "murder", "kidnap", "rape", "tied to a chair", "ungrateful bitch"]
+        self.replace_words = ["cuddle"]
+        self.is_debug = is_debug
         print ("Robot(): Init voice model")
         
         #models, cfg, task = load_model_ensemble_and_task_from_hf_hub(
@@ -34,13 +39,18 @@ class Robot():
         #self.voice_generator = task.build_generator(models, cfg)
         #self.voice_task = task
         
+        
         self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
         self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
         
         print ("Robot(): Init Tokenizer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        print ("Robot(): Init Model")
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
+        if model_file:
+            print (f"Robot(): Init Model from file {model_file}")
+            self.model = AutoModelForCausalLM.from_pretrained(model_file, local_files_only=True)
+        else:
+            print ("Robot(): Init mew Model")
+            self.model = AutoModelForCausalLM.from_pretrained(model_name)
         print ("Robot(): Setting precision to fp16")
         self.model.half()
         print ("Robot(): Send model to gpu")
@@ -102,20 +112,30 @@ class Robot():
                            min_len:int=128,
                            max_len:int=256
                           ):
+        if self.is_debug:
+            print (f"get_robot_response()")
         
-        bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
+        
+        
+        if self.is_debug:
+            print (f"get_robot_response(): Encoding input")
+        #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
-        filter_words = ["You:", f"{self.name}:", 
-                        f"{person}:", "<BOT>", 
-                        "<START>", "</BOT>",
-                        "Persona:",
-                       "\n\n", "\n "]
         
+        stopping_words = [
+                              "You:", f"{self.name}:", 
+                              f"{person}:", "<BOT>", 
+                              "<START>", "</BOT>",
+                              "Persona:", "\\x",
+                              "\n\n", "\n ",
+                              "1b", "33m"
+                              ]
+        # Create stopping criteria for generation
         stopping_list = []
-        for filter_word in filter_words:
+        for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(
                 sentinel_token_ids=self.tokenizer(
-                    filter_word,
+                    stopping_word,
                     add_special_tokens=False,
                     return_tensors="pt",
                 #).input_ids,
@@ -125,18 +145,26 @@ class Robot():
             
         stopping_criteria_list = StoppingCriteriaList(stopping_list)
         
+        # Generate response logits from model
+        if self.is_debug:
+            print (f"get_robot_response(): Generating output")
         logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
                                      min_length=min_len+len(prompt), 
                                      max_length=max_len+len(prompt), 
                                      do_sample=True,
                                      **tokenized_items
                                     )
+        
+        if self.is_debug:
+            print (f"get_robot_response(): Decoding output")
         # Decode output logits to words
         output = self.tokenizer.decode(logits[0], skip_special_tokens=True)
         # Filter input
         output = output[len(prompt)+1:]
         
-        for filter_word in filter_words:
+        if self.is_debug:
+            print (f"get_robot_response(): Processing output")
+        for filter_word in stopping_words:
             if filter_word in output:
                 output = output[0:output.index(filter_word)]
             
@@ -150,13 +178,14 @@ class Robot():
         
         # Remove visual expressions
         run_count = 0
-        max_run_count = 5
+        max_run_count = 10
         # Use regex to match strings like *[TEXT]* 
         match = re.search("(?<=\*)(.*?)(?=\*)", output)
         while match and run_count < max_run_count:
             run_count += 1
             output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
             match = re.search("(?<=\*)(.*?)(?=\*)", output)
+        run_count = 0
         # Use regex to match strings like [[TEXT]] 
         match = re.search("(?<=\[)(.*?)(?=\])", output)
         while match and run_count < max_run_count:
@@ -176,6 +205,23 @@ class Robot():
         if len(output) > max_len * 2:
             print (f"Ouput too large len(output) = {len(output)}")
             output = output[0:max_len]
+            
+        # If bad word in 
+        for filter_word in self.filter_words:
+            if filter_word in output:
+                replacement = choice(self.replace_words)
+                print (f"Robot: Replacing {filter_word}, {replacement}")
+                output = output.replace(filter_word, replacement)
+        
+        output = output.replace("Hehe", "Haha")
+        output = output.replace("hehe", "haha")
+        
+        if self.is_debug:
+            print (f"get_robot_response(): Clearing gpu memory")
+        # Clear memory
+        torch.cuda.empty_cache()
+        if self.is_debug:
+            print (f"get_robot_response(): Done")
                 
         return output
     
