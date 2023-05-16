@@ -62,24 +62,22 @@ class Conversation():
             chat_history.dialogue = chat_history.dialogue[-history_size:]
         # Mix in human memories
         human = self.get_human(commentor)
-        for index in range(len(human.memories)):
-            memory = human.memories[index]
+        for index in range(len(human.positive_memories)):
+            memory = human.positive_memories[index]
             # Check if memory is in chat history
             is_memory_included = False
             for comment in chat_history.dialogue:
-                if comment.comment == memory.response:
+                if comment.comment == memory.response.comment:
                     is_memory_included = True
             if not is_memory_included:
                 #print(f"Inserting memory to prompt: memory = {memory}")
-                chat_history.dialogue = [memory.prompt] + chat_history.dialogue
-                chat_history.dialogue = [memory.comment] + chat_history.dialogue
-                chat_history.dialogue = [memory.response] + chat_history.dialogue
+                chat_history.dialogue = [memory.prompt, memory.comment, memory.response] + chat_history.dialogue
         
         prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
         prompt += "<START>\n"
         #prompt += "[DIALOGUE HISTORY]"       
         # Dialogue history
-        prompt += chat_history.printf()
+        prompt += chat_history.prompt()
         
         # Randomly add things to prompt to steer conversation
         if random() > 0.75:
@@ -128,7 +126,7 @@ class Conversation():
         # Check for certain trigger words
         # If asked for a long story
         if "long story" in comment:
-            response_length_modifier = 128
+            response_length_modifier = 1024
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(comment)
@@ -139,8 +137,8 @@ class Conversation():
         # Generate robot response                
         prompt = self.build_prompt(commentor, self.chat_buffer_size)
         # Randomize length of response
-        min_len = 128 + int(128 * random()) + response_length_modifier
-        max_len = 256 + int(128 * random()) + response_length_modifier
+        min_len = 256 + int(256 * random()) + response_length_modifier
+        max_len = 512 + int(1024 * random()) + response_length_modifier
         print (f"process_comment(): min_len = {min_len}, max_len = {max_len}")
         # Generate output from the robot given the prompt
         output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
@@ -156,6 +154,7 @@ class Conversation():
             print (f"regenerating {retry}")
             retry += 1
             output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
+            should_retry = (len(output) < min_allowed_respose_len)
         
         # Text to speech output 
         wav, rate = self.robot.read_response(output)
@@ -170,13 +169,24 @@ class Conversation():
         # Create comment object
         self.chat_histories[commentor].add_comment(Comment(self.robot.name, output, sentiment))
         
+        if len(chat_history.dialogue) > 2:
+            print (f"Conversation(): last comment = {self.chat_histories[commentor].dialogue[-2].comment}")
+            print (f"Conversation(): sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
         # Randomly save memory
-        if random() > .5 and len(chat_history.dialogue) > 3:
-            prompt = self.chat_histories[commentor].dialogue[-4]
-            comment = self.chat_histories[commentor].dialogue[-3]
-            response = self.chat_histories[commentor].dialogue[-2]
-            human.add_memory(Memory(prompt, comment, response))
-        
+        if len(chat_history.dialogue) > 3: 
+            if self.chat_histories[commentor].dialogue[-2].sentiment.sentiment == "positive":
+                print ("Conversation(): Got a positive response, saving memory")
+                prompt = self.chat_histories[commentor].dialogue[-4]
+                comment = self.chat_histories[commentor].dialogue[-3]
+                response = self.chat_histories[commentor].dialogue[-2]
+                human.add_positive_memory(Memory(prompt, comment, response))
+            elif self.chat_histories[commentor].dialogue[-2].sentiment.sentiment == "negative":
+                print ("Conversation(): Got a negative response, saving negative memory")
+                prompt = self.chat_histories[commentor].dialogue[-4]
+                comment = self.chat_histories[commentor].dialogue[-3]
+                response = self.chat_histories[commentor].dialogue[-2]
+                human.add_negative_memory(Memory(prompt, comment, response))
+
         
         return output, wav, rate
     
@@ -203,10 +213,10 @@ class ChatHistory():
             out_str += " \n"
         return out_str
     
-    def __repr__(self):
+    def prompt(self):
         out_str = ""
         for comment in self.dialogue:
-            out_str += comment.printf()
+            out_str += comment.prompt()
             out_str += " \n"
         return out_str
     

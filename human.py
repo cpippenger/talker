@@ -29,10 +29,14 @@ class Human():
                  name:str
                 ):
         self.name = name
-        self.memories = []
+        self.positive_memories = []
+        self.negative_memories = []
     
-    def add_memory(self, memory):
-        self.memories = [memory] + self.memories
+    def add_positive_memory(self, memory):
+        self.positive_memories = [memory] + self.positive_memories
+        
+    def add_negative_memory(self, memory):
+        self.negative_memories = [memory] + self.negative_memories
             
     def __repr__(self):
         return f"Human({self.name})"

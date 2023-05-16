@@ -12,6 +12,13 @@ from speechbrain.pretrained import HIFIGAN
 
 from nltk.tokenize import sent_tokenize
 
+# TODO: Implement a lookahead on text generation
+# so that the bot will generate an expected response
+# to it's comment. It will then analyze the sentiment
+# of the response to see if it expects the user to 
+# response positively
+
+
 class Robot():
     def __init__(self, 
                  name:str,
@@ -115,10 +122,13 @@ class Robot():
         if self.is_debug:
             print (f"get_robot_response()")
         
-        
-        
         if self.is_debug:
             print (f"get_robot_response(): Encoding input")
+        
+        # Randomly prepend the output with the person's name
+        if random() > .85:
+            prompt = f"Well {person} " + prompt
+            
         #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
         
@@ -126,9 +136,9 @@ class Robot():
                               "You:", f"{self.name}:", 
                               f"{person}:", "<BOT>", 
                               "<START>", "</BOT>",
-                              "Persona:", "\\x",
-                              "\n\n", "\n ",
-                              "1b", "33m"
+                              "Persona:"
+                              #"\n\n", "\n ",
+                              #"\\x", "1b", "33m"
                               ]
         # Create stopping criteria for generation
         stopping_list = []
@@ -172,9 +182,7 @@ class Robot():
         
         if "<USER>" in output:
             output = output.replace("<USER>", person)
-            
-        if random() > .75:
-            output = f"Well {person} " + output
+
         
         # Remove visual expressions
         run_count = 0
@@ -200,7 +208,7 @@ class Robot():
         for spice in self.prompt_spices:
             output = output.replace(spice, "")
         for emotion in self.prompt_emotions:
-            output = output.replace(f"Be {emotion}.\n", "")
+            output = output.replace(f"Be {emotion}.", "")
             
         if len(output) > max_len * 2:
             print (f"Ouput too large len(output) = {len(output)}")
@@ -215,11 +223,13 @@ class Robot():
         
         output = output.replace("Hehe", "Haha")
         output = output.replace("hehe", "haha")
+        #output = output.replace(f"Well {person} Well Alec", "haha")
         
         if self.is_debug:
             print (f"get_robot_response(): Clearing gpu memory")
         # Clear memory
         torch.cuda.empty_cache()
+        
         if self.is_debug:
             print (f"get_robot_response(): Done")
                 

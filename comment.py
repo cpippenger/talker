@@ -23,12 +23,7 @@ class Comment():
             return f"{Color.F_Red}{self.commentor}: {self.comment}{Color.F_White}"
     
     
-    def __repr__(self):
-        if self.sentiment.sentiment == "positive":
-            return f"{Color.F_Green}{self.commentor}: {self.comment}{Color.F_White}"
-        if self.sentiment.sentiment == "neutral":
-            return f"{Color.F_Blue}{self.commentor}: {self.comment}{Color.F_White}"
-        if self.sentiment.sentiment == "negative":
-            return f"{Color.F_Red}{self.commentor}: {self.comment}{Color.F_White}"
+    def prompt(self):
+        return f"{self.commentor}: {self.comment}"
         
         
