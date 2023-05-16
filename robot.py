@@ -137,7 +137,8 @@ class Robot():
                               f"{person}:", "<BOT>", 
                               "<START>", "</BOT>",
                               "Persona:"
-                              #"\n\n", "\n ",
+                              "\n\n", 
+                              #"\n ",
                               #"\\x", "1b", "33m"
                               ]
         # Create stopping criteria for generation

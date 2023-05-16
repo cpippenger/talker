@@ -4,10 +4,28 @@ from copy import copy
 from datetime import datetime
 from numpy.random import random
 
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
+
+
+from info import Info
 from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
 from comment import Comment
 
+
+def preprocess(sent):
+    sent = nltk.word_tokenize(sent)
+    sent = nltk.pos_tag(sent)
+    return sent
+def find_proper_nouns(sent):
+    proper_nouns = []
+    ner_tokens = preprocess(sent)
+    for token in ner_tokens:
+        if token[1] == "NNP":
+            proper_nouns.append(token[0])
+    return proper_nouns
 
 class Conversation():
     def __init__(self, robot, is_debug=True):
@@ -121,8 +139,16 @@ class Conversation():
         chat_history = self.chat_histories[commentor]
         
         # Preprocess text
-        comment = comment.replace("...", "... ")
+        comment = comment.replace("...", ".. . ")
         
+        # Find any proper nouns in the text
+        info = None
+        proper_nouns = find_proper_nouns(comment)
+        if proper_nouns:
+            print (f"Found proper nouns = {proper_nouns}")
+            search_term = " ".join(proper_nouns)
+            info = Info.find_wiki_page(search_term)
+                    
         # Check for certain trigger words
         # If asked for a long story
         if "long story" in comment:
@@ -136,6 +162,9 @@ class Conversation():
         chat_history.add_comment(Comment(commentor, comment, sentiment))
         # Generate robot response                
         prompt = self.build_prompt(commentor, self.chat_buffer_size)
+        if info:
+            prompt = info + "\n" + prompt
+            print (f"Updating prompt \n{prompt}")
         # Randomize length of response
         min_len = 256 + int(256 * random()) + response_length_modifier
         max_len = 512 + int(1024 * random()) + response_length_modifier
