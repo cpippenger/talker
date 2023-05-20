@@ -12,6 +12,7 @@ matplotlib
 torch
 torchaudio
 transformers
+datasets
 
 # Text to speech
 fairseq
