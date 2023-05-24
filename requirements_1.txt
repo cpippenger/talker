@@ -8,11 +8,17 @@ matplotlib
 #pyglet==1.5.0
 #lmdb
 
+# External data
+googlesearch-python
+wikipedia
+
 # Machine Learning
 torch
 torchaudio
 transformers
 datasets
+deepspeed
+accelerate
 
 # Text to speech
 fairseq
