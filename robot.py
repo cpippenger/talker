@@ -68,6 +68,7 @@ class Robot():
         
         print ("Robot(): Init Tokenizer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
         if model_file:
             print (f"Robot(): Load saved model {model_file}")
             self.model_source = model_file
@@ -76,14 +77,14 @@ class Robot():
             print (f"Robot(): Load fine tuned model: {finetune_path}")
             self.model_source = finetune_path
             self.model = AutoModelForCausalLM.from_pretrained(finetune_path)
-            tokenizer = AutoTokenizer.from_pretrained(finetune_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(finetune_path)
         elif model_name:
             print (f"Robot(): Init mew Model: {model_name}")
             self.model_source = model_name
-            #self.model = AutoModelForCausalLM.from_pretrained(model_name)
-            config = AutoConfig.from_pretrained(model_name)
-            with init_empty_weights():
-                self.model = AutoModelForCausalLM.from_config(config)
+            self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            #config = AutoConfig.from_pretrained(model_name)
+            ##with init_empty_weights():
+            #self.model = AutoModelForCausalLM.from_config(config)
         print ("Robot(): Setting precision to fp16")
         self.model.half()
         print ("Robot(): Send model to gpu")
@@ -178,12 +179,20 @@ class Robot():
         # Generate response logits from model
         if self.is_debug:
             print (f"get_robot_response(): Generating output")
-        logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
+        #logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
+        #                             min_length=min_len+len(prompt), 
+        #                             max_length=max_len+len(prompt), 
+        #                             do_sample=True,
+        #                             **tokenized_items
+        #                            )
+        logits = self.model.generate(
+                                     input_ids=tokenized_items["input_ids"],
+                                     stopping_criteria=stopping_criteria_list, 
                                      min_length=min_len+len(prompt), 
                                      max_length=max_len+len(prompt), 
-                                     do_sample=True,
-                                     **tokenized_items
+                                     do_sample=True
                                     )
+        
         
         if self.is_debug:
             print (f"get_robot_response(): Decoding output")
