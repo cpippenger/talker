@@ -1,7 +1,8 @@
 import re
 import torch
+from accelerate import init_empty_weights
 import transformers
-from transformers import AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
 from numpy.random import random, choice
 from fairseq.checkpoint_utils import load_model_ensemble_and_task_from_hf_hub
@@ -25,16 +26,29 @@ class Robot():
                  persona:str,
                  model_name:str="PygmalionAI/pygmalion-6b",
                  model_file:str=None,
-                 is_debug=False
+                 is_debug=False,
+                 finetune_path:str=None
                 ):
         print (f"Robot(name={name}, persona={persona}, model_name={model_name})")
         self.name = name
         self.persona = persona
+        self.stopping_words = [
+                              "You:", f"{self.name}:", 
+                              "<BOT>", "</BOT>",
+                              "<START>",
+                              "Persona:"
+                              #"\n\n", 
+                              #"\n ",
+                              #"\\x", "1b", "33m"
+                              ]
         self.prompt_spices = ["Say it to me sexy.", "You horny puppet."]
         self.prompt_emotions = ["positive", "negative"]
-        self.filter_words = ["kill", "die", "murder", "kidnap", "rape", "tied to a chair", "ungrateful bitch"]
-        self.replace_words = ["cuddle"]
+        self.filter_words = [" kill ", " die ", " murder ", " kidnap ", " rape ", "tied to a chair", "ungrateful bitch"]
+        self.replace_words = [" cuddle "]
+        self.filter_words = [" killed ", " died ", " murdered ", " kidnapped ", " raped ", "tied to a chair", "ungrateful bitch"]
+        self.replace_words = [" cuddled "]
         self.is_debug = is_debug
+        self.model_source = ""
         print ("Robot(): Init voice model")
         
         #models, cfg, task = load_model_ensemble_and_task_from_hf_hub(
@@ -50,14 +64,27 @@ class Robot():
         self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
         self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
         
+        
+        
         print ("Robot(): Init Tokenizer")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
         if model_file:
-            print (f"Robot(): Init Model from file {model_file}")
+            print (f"Robot(): Load saved model {model_file}")
+            self.model_source = model_file
             self.model = AutoModelForCausalLM.from_pretrained(model_file, local_files_only=True)
-        else:
-            print ("Robot(): Init mew Model")
+        elif finetune_path:
+            print (f"Robot(): Load fine tuned model: {finetune_path}")
+            self.model_source = finetune_path
+            self.model = AutoModelForCausalLM.from_pretrained(finetune_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(finetune_path)
+        elif model_name:
+            print (f"Robot(): Init mew Model: {model_name}")
+            self.model_source = model_name
             self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            #config = AutoConfig.from_pretrained(model_name)
+            ##with init_empty_weights():
+            #self.model = AutoModelForCausalLM.from_config(config)
         print ("Robot(): Setting precision to fp16")
         self.model.half()
         print ("Robot(): Send model to gpu")
@@ -132,15 +159,8 @@ class Robot():
         #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
         
-        stopping_words = [
-                              "You:", f"{self.name}:", 
-                              f"{person}:", "<BOT>", 
-                              "<START>", "</BOT>",
-                              "Persona:"
-                              "\n\n", 
-                              #"\n ",
-                              #"\\x", "1b", "33m"
-                              ]
+        stopping_words = self.stopping_words + [f"{person}:"]
+        
         # Create stopping criteria for generation
         stopping_list = []
         for stopping_word in stopping_words:
@@ -159,12 +179,20 @@ class Robot():
         # Generate response logits from model
         if self.is_debug:
             print (f"get_robot_response(): Generating output")
-        logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
+        #logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
+        #                             min_length=min_len+len(prompt), 
+        #                             max_length=max_len+len(prompt), 
+        #                             do_sample=True,
+        #                             **tokenized_items
+        #                            )
+        logits = self.model.generate(
+                                     input_ids=tokenized_items["input_ids"],
+                                     stopping_criteria=stopping_criteria_list, 
                                      min_length=min_len+len(prompt), 
                                      max_length=max_len+len(prompt), 
-                                     do_sample=True,
-                                     **tokenized_items
+                                     do_sample=True
                                     )
+        
         
         if self.is_debug:
             print (f"get_robot_response(): Decoding output")
