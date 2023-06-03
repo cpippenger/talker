@@ -15,7 +15,7 @@ RUN tar -xzvf /cudnn-10.2-linux-x64-v8.2.0.53.tgz && \
 # 1. installing python2 and python3
 RUN apt-get update && apt-get install -y software-properties-common
 RUN apt-get update && \
-    apt install -y --no-install-recommends python3-pip python-pip python3 python
+    apt install -y --no-install-recommends python3-pip python3
 # 1.1 uppgrade pip and pip3
 RUN pip3 install --upgrade pip setuptools && pip install --upgrade pip
 
@@ -28,20 +28,10 @@ RUN apt-get update \
         git  \
         curl  \
         cmake \
-        zlib1g-dev \
-        libjpeg-dev \
-        xvfb \
-        ffmpeg \
-        xorg-dev \
-        libboost-all-dev \
-        libsdl2-dev \
-        swig \
         python3 \
         python3-setuptools  \
         python3-wheel  \
         python3-tk \
-        libopenblas-base  \
-        libatlas-base-dev  \
 
      && apt-get clean \
      && rm -rf /var/lib/apt/lists/*
@@ -53,10 +43,10 @@ RUN python3 -m pip install --upgrade pip
 COPY requirements_1.txt /tmp/
 RUN python3 -m pip install -r /tmp/requirements_1.txt
 
-RUN apt-get install nvidia-cuda-toolkit
+#RUN apt-get install nvidia-cuda-toolkit
 
-RUN apt-get update && apt-get install -y x11vnc xvfb fluxbox wmctrl
-RUN apt-get clean
+#RUN apt-get update && apt-get install -y x11vnc xvfb fluxbox wmctrl
+#RUN apt-get clean
 
 # Enable jupyter widgets
 RUN jupyter nbextension enable --py --sys-prefix widgetsnbextension
