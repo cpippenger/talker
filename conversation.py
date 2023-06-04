@@ -1,4 +1,8 @@
+import os
+import time
+import pickle
 import IPython
+import logging
 import numpy as np
 from copy import copy
 from datetime import datetime
@@ -10,6 +14,7 @@ from nltk.tag import pos_tag
 
 
 from info import Info
+from color import Color
 from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
 from comment import Comment
@@ -19,18 +24,23 @@ def preprocess(sent):
     sent = nltk.word_tokenize(sent)
     sent = nltk.pos_tag(sent)
     return sent
+
 def find_proper_nouns(sent):
     proper_nouns = []
     ner_tokens = preprocess(sent)
     for token in ner_tokens:
         if token[1] == "NNP":
             proper_nouns.append(token[0])
+    # Convert list to string
+    proper_nouns = " ".join(proper_nouns)
     return proper_nouns
 
 class Conversation():
     def __init__(self, robot, is_debug=True):
+        logging.info("{__class__.__name__}.{__name__}()")
         self.robot = robot        
         self.humans = []
+        self.info = Info()
         self.chat_histories = {}
         self.chat_buffer_size = 4
         self.sentiment = Sentiment()
@@ -45,7 +55,13 @@ class Conversation():
             out_str +=  f"\t {index} : {self.humans[index]}"
         return out_str
     
-    def set_robot(robot):
+    def save(self, filename="Conversation.p"):
+        logging.info("{__class__.__name__}.{__name__}(): Save")
+
+
+
+    
+    def set_robot(self, robot):
         self.robot = robot
     
     def human_exists(self, name:str):
@@ -61,7 +77,7 @@ class Conversation():
         
     def add_human(self, human):
         if self.human_exists(human.name):
-            printf(f"Error: Human {name} already exists")
+            logging.error(f"{Color.F_Red}Error: Human {human} already exists {Color.F_White}")
             return False
         self.humans.append(human)
         self.chat_histories[human.name] = ChatHistory(self.robot.name, human.name)
@@ -72,7 +88,20 @@ class Conversation():
                      commentor:str,
                      history_size:int=5
                     ):
-        """"""
+        """
+        Built an input prompt for the model given then 
+        commentors history and the count of messages to include
+
+        Parameters
+        ----------
+        commentor: str - The name of a user interacting with the system
+        history_size: int - The number of recent messages to include in the prompt
+
+        Returns
+        -------
+        prompt:str - A string containing the full prompt to send to the model encoder
+        """
+        logging.info(f"{__class__.__name__}.{__name__}(commentor={commentor}, history_size={history_size})")
         chat_history = copy(self.chat_histories[commentor])
         # If history too long
         if len(chat_history.dialogue) > history_size:
@@ -103,15 +132,8 @@ class Conversation():
         if random() > 0.5:
             prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
         
-                
         # Robot name prompt
         prompt += f"{self.robot.name}:"
-        
-        if self.is_debug:
-            print (f"prompt:")
-            print ("-"*100)
-            print (prompt)
-            print ("-"*100)
         
         return prompt
     
@@ -131,7 +153,9 @@ class Conversation():
         commentor : string - The name of the user making the comment
         comment : string - The comment from the 
         """
-        #print (f"process_comment({commentor}, {comment})")
+        func_name = "process_comment"
+        logging.info(f"{__class__.__name__}.{func_name}({commentor}, {comment})")
+        start_time = time.time()
         if not self.human_exists(commentor):
             self.add_human(Human(commentor))        
         # Convenience variables
@@ -141,14 +165,15 @@ class Conversation():
         # Preprocess text
         comment = comment.replace("...", ".. . ")
         
-        # Find any proper nouns in the text
-        info = None
+        # If there are any proper nouns in the text
+        # search for a corresponding wiki page
+        # add the summary to the context
+        prompt_info = None
         proper_nouns = find_proper_nouns(comment)
         if proper_nouns:
-            print (f"Found proper nouns = {proper_nouns}")
-            search_term = " ".join(proper_nouns)
-            info = Info.find_wiki_page(search_term)
-                    
+            logging.info(f"{__class__.__name__}.{func_name}: Found proper nouns = {proper_nouns}")
+            prompt_info = self.info.find_wiki_page(proper_nouns)
+        
         # Check for certain trigger words
         # If asked for a long story
         if "long story" in comment:
@@ -162,13 +187,19 @@ class Conversation():
         chat_history.add_comment(Comment(commentor, comment, sentiment))
         # Generate robot response                
         prompt = self.build_prompt(commentor, self.chat_buffer_size)
-        if info:
-            prompt = info + "\n" + prompt
-            print (f"Updating prompt \n{prompt}")
+        if prompt_info:
+            prompt = prompt_info + "\n" + prompt
+            logging.info(f"{__class__.__name__}.{func_name}(): Updating prompt with wiki data")
+
+        logging.info(f"{__class__.__name__}().{func_name}: Sending prompt to robot:")
+        logging.info("-"*100)
+        logging.info(f"\n{Color.F_Cyan}{prompt}{Color.F_White}")
+        logging.info("-"*100)
+
         # Randomize length of response
         min_len = 256 + int(256 * random()) + response_length_modifier
         max_len = 512 + int(1024 * random()) + response_length_modifier
-        print (f"process_comment(): min_len = {min_len}, max_len = {max_len}")
+        logging.info(f"{__class__.__name__}.{func_name}(): min_len = {min_len}, max_len = {max_len}")
         # Generate output from the robot given the prompt
         output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
         # Maybe retry generating output if it did not meet requirements
@@ -176,11 +207,11 @@ class Conversation():
         retry = 0
         should_retry = False
         if len(output) < min_allowed_respose_len:
-            print (f"output not long enough len(output) = {len(output)} ")
+            logging.info(f"{__class__.__name__}.{func_name}(): Output not long enough len(output) = {len(output)} ")
             should_retry = True
         while retry < retry_count and should_retry:
-            print (f"output = {output}")
-            print (f"regenerating {retry}")
+            logging.info(f"{__class__.__name__}.{func_name}(): Output = {output}")
+            logging.info(f"{__class__.__name__}.{func_name}(): Regenerating {retry}")
             retry += 1
             output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
             should_retry = (len(output) < min_allowed_respose_len)
@@ -199,38 +230,75 @@ class Conversation():
         self.chat_histories[commentor].add_comment(Comment(self.robot.name, output, sentiment))
         
         if len(chat_history.dialogue) > 2:
-            print (f"Conversation(): last comment = {self.chat_histories[commentor].dialogue[-2].comment}")
-            print (f"Conversation(): sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
-        # Randomly save memory
+            logging.info(f"{__class__.__name__}.{func_name}(): last comment = {self.chat_histories[commentor].dialogue[-2].comment}")
+            logging.info(f"{__class__.__name__}.{func_name}():  sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
+        # If has a complete set of prompt, generated response and user response
         if len(chat_history.dialogue) > 3: 
+            # If the sentiment of the user response was positive
             if self.chat_histories[commentor].dialogue[-2].sentiment.sentiment == "positive":
-                print ("Conversation(): Got a positive response, saving memory")
+                # Save positive interaction
+                logging.info(f"{__class__.__name__}.{func_name}():  Got a positive response, saving memory")
                 prompt = self.chat_histories[commentor].dialogue[-4]
                 comment = self.chat_histories[commentor].dialogue[-3]
                 response = self.chat_histories[commentor].dialogue[-2]
                 human.add_positive_memory(Memory(prompt, comment, response))
+            # If the sentiment of the user response was positive
             elif self.chat_histories[commentor].dialogue[-2].sentiment.sentiment == "negative":
-                print ("Conversation(): Got a negative response, saving negative memory")
+                # Save negative interaction
+                logging.info("f{__class__.__name__}.{func_name}():  Got a negative response, saving negative memory")
                 prompt = self.chat_histories[commentor].dialogue[-4]
                 comment = self.chat_histories[commentor].dialogue[-3]
                 response = self.chat_histories[commentor].dialogue[-2]
                 human.add_negative_memory(Memory(prompt, comment, response))
 
-        
+        runtime = time.time() - start_time
+        logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
         return output, wav, rate
     
     
 class ChatHistory():
     def __init__(self, 
                  personA:str, 
-                 personB:str
+                 personB:str,
+                 use_cache:bool=True
                 ):
-        self.personA = personA
-        self.personB = personB
-        self.dialogue = [] # list of Comment objects
-            
+        self.cache_filename = f"{personA}-{personB}_chat_history.p"
+
+        if use_cache and os.path.isfile(self.cache_filename):
+            loaded = self.load()
+            if not loaded:
+                logging.error(f"{Color.F_Red}{__class__.__name__}.__init__(): Failed to load chat history {self.cache_filename}{Color.F_White}")
+        else:
+            # Init a fresh chat
+            self.personA = personA
+            self.personB = personB
+            self.dialogue = [] # list of Comment objects
+
+
+
+
+    def save(self):
+        pickle.dump({"personA":self.personA, "personB":self.personB, "dialogue":self.dialogue}, open(self.cache_filename, "wb"))
+
+        return True
+
+    def load(self):
+        if not os.path.isfile(self.cache_filename):
+            logging.warning(f"{__class__.__name__}.load(): File does not exist")
+            return None
+        
+        saved = pickle.load(open(self.cache_filename, "rb"))
+
+        self.personA = saved["personA"]
+        self.personB = saved["personB"]
+        self.dialogue = saved["dialogue"] # list of Comment objects
+        self.cache_filename = f"{self.personA}-{self.personB}_chat_history.p"
+
+        return True
+      
     def add_comment(self, comment):
         self.dialogue.append(comment)
+        self.save()
     
     def reset(self):
         self.dialogue = []
