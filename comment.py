@@ -8,6 +8,9 @@ class Comment():
         self.commentor = commentor
         self.comment = comment
         self.sentiment = sentiment
+
+    def __repr__(self) -> str:
+        return f"{self.commentor}: {self.comment}"
         
     def get_age(self):
         curr = datetime.now()

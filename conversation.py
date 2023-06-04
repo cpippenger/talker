@@ -37,7 +37,7 @@ def find_proper_nouns(sent):
 
 class Conversation():
     def __init__(self, robot, is_debug=True):
-        logging.info("{__class__.__name__}.{__name__}()")
+        logging.info("{__class__.__name__}.__init__()")
         self.robot = robot        
         self.humans = []
         self.info = Info()
@@ -56,11 +56,8 @@ class Conversation():
         return out_str
     
     def save(self, filename="Conversation.p"):
-        logging.info("{__class__.__name__}.{__name__}(): Save")
+        logging.info("{__class__.__name__}.save(): Save")
 
-
-
-    
     def set_robot(self, robot):
         self.robot = robot
     
@@ -273,8 +270,7 @@ class ChatHistory():
             self.personA = personA
             self.personB = personB
             self.dialogue = [] # list of Comment objects
-
-
+            self.save()
 
 
     def save(self):
@@ -292,7 +288,6 @@ class ChatHistory():
         self.personA = saved["personA"]
         self.personB = saved["personB"]
         self.dialogue = saved["dialogue"] # list of Comment objects
-        self.cache_filename = f"{self.personA}-{self.personB}_chat_history.p"
 
         return True
       
