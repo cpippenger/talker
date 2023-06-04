@@ -1,5 +1,10 @@
 import re
+import time
+import json
+import num2words
 import torch
+import pickle
+import logging
 from accelerate import init_empty_weights
 import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
@@ -12,6 +17,8 @@ from speechbrain.pretrained import Tacotron2
 from speechbrain.pretrained import HIFIGAN
 
 from nltk.tokenize import sent_tokenize
+
+from color import Color
 
 # TODO: Implement a lookahead on text generation
 # so that the bot will generate an expected response
@@ -29,7 +36,7 @@ class Robot():
                  is_debug=False,
                  finetune_path:str=None
                 ):
-        print (f"Robot(name={name}, persona={persona}, model_name={model_name})")
+        logging.info(f"{__class__.__name__}.{__name__}(): (name={name}, persona={persona}, model_name={model_name})")
         self.name = name
         self.persona = persona
         self.stopping_words = [
@@ -37,6 +44,8 @@ class Robot():
                               "<BOT>", "</BOT>",
                               "<START>",
                               "Persona:"
+                              "Lilly",
+                              "Ashlee"
                               #"\n\n", 
                               #"\n ",
                               #"\\x", "1b", "33m"
@@ -48,51 +57,86 @@ class Robot():
         self.filter_words = [" killed ", " died ", " murdered ", " kidnapped ", " raped ", "tied to a chair", "ungrateful bitch"]
         self.replace_words = [" cuddled "]
         self.is_debug = is_debug
-        self.model_source = ""
-        print ("Robot(): Init voice model")
+        self.model_name = model_file
+        self.model_file = model_name
+        self.finetune_path = finetune_path
+        self.model = None
+        #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
+
+    def to_dict(self):
+        return {
+            "name" : self.name,
+            "persona" : self.persona,
+            "stopping_words" : self.stopping_words,
+            "prompt_spices" : self.prompt_spices,
+            "prompt_emotions" : self.prompt_emotions,
+            "filter_words" : self.filter_words,
+            "replace_words" : self.replace_words,
+            "is_debug" : self.is_debug,
+            "model_name" : self.model_name,
+            "model_file" : self.model_file,
+            "finetune_path" : self.finetune_path
+        }
+
+    def __repr__(self):
+        return json.dumps(self.to_dict(), indent=2)
+
+    def save(self, filename):
+        pickle.dump(self.to_dict(), open(filename, "wb"))
+
+    def load(self, filename):
+        values = pickle.load(open(filename, "rb"))
+        self.name = values["name"]
+        self.persona = values["persona"]
+        self.stopping_words = values["stopping_words"]
+        self.prompt_spices = values["prompt_spices"]
+        self.prompt_emotions = values["prompt_emotions"]
+        self.filter_words = values["filter_words"]
+        self.replace_words = values["replace_words"]
+        self.is_debug = values["is_debug"]
+        self.model_name = values["model_name"]
+        self.model_file = values["model_file"]
+        self.finetune_path = values["finetune_path"]
         
-        #models, cfg, task = load_model_ensemble_and_task_from_hf_hub(
-        #    "facebook/fastspeech2-en-ljspeech",
-        #    arg_overrides={"vocoder": "hifigan", "fp16": False, "cpu": True}
-        #)
-        #self.voice_model = models[0]
-        #TTSHubInterface.update_cfg_with_data_cfg(cfg, task.data_cfg)
-        #self.voice_generator = task.build_generator(models, cfg)
-        #self.voice_task = task
-        
-        
-        self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
-        self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
-        
-        
-        
-        print ("Robot(): Init Tokenizer")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        
+
+    def init_models(self, model_file, model_name, finetune_path):
         if model_file:
-            print (f"Robot(): Load saved model {model_file}")
+            logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {model_file}")
             self.model_source = model_file
             self.model = AutoModelForCausalLM.from_pretrained(model_file, local_files_only=True)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_file)
         elif finetune_path:
-            print (f"Robot(): Load fine tuned model: {finetune_path}")
+            logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {finetune_path}")
             self.model_source = finetune_path
             self.model = AutoModelForCausalLM.from_pretrained(finetune_path)
             self.tokenizer = AutoTokenizer.from_pretrained(finetune_path)
         elif model_name:
-            print (f"Robot(): Init mew Model: {model_name}")
+            logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {model_name}")
             self.model_source = model_name
             self.model = AutoModelForCausalLM.from_pretrained(model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
             #config = AutoConfig.from_pretrained(model_name)
             ##with init_empty_weights():
             #self.model = AutoModelForCausalLM.from_config(config)
-        print ("Robot(): Setting precision to fp16")
+
+        logging.info(f"{__class__.__name__}.{__name__}(): Setting precision to fp16")
         self.model.half()
-        print ("Robot(): Send model to gpu")
+        logging.info(f"{__class__.__name__}.{__name__}(): Send model to gpu")
         self.model.to("cuda")
-        print ("Robot(): Done")
-    
+        logging.info(f"{__class__.__name__}.{__name__}(): Done")
+
+        # Init text to speach model
+        self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
+        self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
+        
+
     
     def read_response(self, text:str, rate_modifier=None, is_say=False):
+        """
+        Convert text to speech
+        """
+        start_time = time.time()
+        #logging.info(f"{__class__.__name__}.{__name__}(text={text}, rate_modifier={rate_modifier}, is_say={is_say})")
         wav = None
         # If text is long        
         if len(text) > 120:
@@ -104,21 +148,18 @@ class Robot():
                 #print (f"Reading {sentence}")
                 sentence = sentence.strip()
                 #wav, rate = robot.read_response(sentence.strip())
-                
                 if len(sentence) < 2:
                     #print ("Skipping")
                     continue
                 try:
                     # Running the TTS
                     mel_output, mel_length, alignment = self.tacotron2.encode_text(sentence)
-
                     # Running Vocoder (spectrogram-to-waveform)
                     wav = self.hifi_gan.decode_batch(mel_output)
                     wav = wav.squeeze(1)
-
                     wavs.append(wav)
                 except:
-                    print (f"Failed to read text = {text}")
+                    print (f"Failed to read text = {sentence}")
 
             wav = torch.hstack(wavs)
         
@@ -131,13 +172,14 @@ class Robot():
                 wav = self.hifi_gan.decode_batch(mel_output)
                 wav = wav.squeeze(1)
             except:
-                print (f"Failed to read text = {text}")
+                logging.error(f"{Color.F_Red}{__class__.__name__}.{__name__}(): Failed to read text = {text}{Color.F_White}")
             
         rate = 22050 * 1.07
         
         if rate_modifier:
             rate = rate * rate_modifier
-
+        runtime = time.time() - start_time
+        logging.info(f"{__class__.__name__}.read_response(): runtime = {runtime}")
         return wav, rate
         
     def get_robot_response(self,
@@ -146,17 +188,19 @@ class Robot():
                            min_len:int=128,
                            max_len:int=256
                           ):
-        if self.is_debug:
-            print (f"get_robot_response()")
-        
-        if self.is_debug:
-            print (f"get_robot_response(): Encoding input")
+        start_time = time.time()
+        #logging.info(f"{__class__.__name__}.{__name__}(person={person}, prompt={prompt}, min_len={min_len}, max_len={max_len})")
+        if not self.model:
+            logging.error(f"{Color.F_Red}{__class__.__name__}.get_robot_response(): Error models not intialized{Color.F_White}")
+            self.init_models(self.model_file, self.model_name, self.finetune_path)
+        #logging.info(f"{__class__.__name__}.{__name__}(): Encoding input")
         
         # Randomly prepend the output with the person's name
         if random() > .85:
             prompt = f"Well {person} " + prompt
             
         #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
+        # Encode input strings
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
         
         stopping_words = self.stopping_words + [f"{person}:"]
@@ -171,14 +215,11 @@ class Robot():
                     return_tensors="pt",
                 #).input_ids,
                 ).input_ids.to("cuda"),
-                starting_idx=tokenized_items.input_ids.shape[-1]))
-            
-            
+                starting_idx=tokenized_items.input_ids.shape[-1]))            
         stopping_criteria_list = StoppingCriteriaList(stopping_list)
         
         # Generate response logits from model
-        if self.is_debug:
-            print (f"get_robot_response(): Generating output")
+        #logging.info(f"{__class__.__name__}.{__name__}(): Generating output")
         #logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
         #                             min_length=min_len+len(prompt), 
         #                             max_length=max_len+len(prompt), 
@@ -190,19 +231,18 @@ class Robot():
                                      stopping_criteria=stopping_criteria_list, 
                                      min_length=min_len+len(prompt), 
                                      max_length=max_len+len(prompt), 
-                                     do_sample=True
+                                     do_sample=True,
+                                     pad_token_id=self.tokenizer.eos_token_id
                                     )
         
         
-        if self.is_debug:
-            print (f"get_robot_response(): Decoding output")
+        #print (f"get_robot_response(): Decoding output")
         # Decode output logits to words
         output = self.tokenizer.decode(logits[0], skip_special_tokens=True)
         # Filter input
         output = output[len(prompt)+1:]
         
-        if self.is_debug:
-            print (f"get_robot_response(): Processing output")
+        #print (f"get_robot_response(): Processing output")
         for filter_word in stopping_words:
             if filter_word in output:
                 output = output[0:output.index(filter_word)]
@@ -240,28 +280,29 @@ class Robot():
             output = output.replace(f"Be {emotion}.", "")
             
         if len(output) > max_len * 2:
-            print (f"Ouput too large len(output) = {len(output)}")
+            logging.info(f"{__class__.__name__}.get_robot_response(): Ouput too large len(output) = {len(output)}")
             output = output[0:max_len]
             
         # If bad word in 
         for filter_word in self.filter_words:
             if filter_word in output:
                 replacement = choice(self.replace_words)
-                print (f"Robot: Replacing {filter_word}, {replacement}")
+                logging.info(f"{__class__.__name__}.get_robot_response(): Replacing {filter_word}, {replacement}")
                 output = output.replace(filter_word, replacement)
         
         output = output.replace("Hehe", "Haha")
         output = output.replace("hehe", "haha")
+        # Replace numbers with words
+        output = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0))), output)
         #output = output.replace(f"Well {person} Well Alec", "haha")
         
-        if self.is_debug:
-            print (f"get_robot_response(): Clearing gpu memory")
+        #print (f"get_robot_response(): Clearing gpu memory")
         # Clear memory
         torch.cuda.empty_cache()
         
-        if self.is_debug:
-            print (f"get_robot_response(): Done")
-                
+        #print (f"get_robot_response(): Done")
+        runtime = time.time() - start_time
+        logging.info(f"{__class__.__name__}.get_robot_response(): runtime = {runtime}")
         return output
     
 class _SentinelTokenStoppingCriteria(transformers.StoppingCriteria):
