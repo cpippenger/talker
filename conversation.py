@@ -83,7 +83,7 @@ class Conversation():
     
     def build_prompt(self,
                      commentor:str,
-                     history_size:int=5
+                     history_size:int=6
                     ):
         """
         Built an input prompt for the model given then 
@@ -107,6 +107,9 @@ class Conversation():
         # Mix in human memories
         human = self.get_human(commentor)
         for index in range(len(human.positive_memories)):
+            # Randomly insert memories
+            if random() > 0.5:
+                continue
             memory = human.positive_memories[index]
             # Check if memory is in chat history
             is_memory_included = False
@@ -298,11 +301,17 @@ class ChatHistory():
     def reset(self):
         self.dialogue = []
     
-    def printf(self):
-        out_str = ""
-        for comment in self.dialogue:
-            out_str += comment.printf()
-            out_str += " \n"
+    def printf(self, count=None):
+        if count:
+            out_str = ""
+            for comment in self.dialogue[-count:]:
+                out_str += comment.printf()
+                out_str += " \n"
+        else:
+            out_str = ""
+            for comment in self.dialogue:
+                out_str += comment.printf()
+                out_str += " \n"
         return out_str
     
     def prompt(self):
