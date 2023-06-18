@@ -1,7 +1,7 @@
 import os
 import time
 import pickle
-import IPython
+#import IPython
 import logging
 import numpy as np
 from copy import copy
@@ -37,12 +37,13 @@ def find_proper_nouns(sent):
 
 class Conversation():
     def __init__(self, robot, is_debug=True):
-        logging.info("{__class__.__name__}.__init__()")
+        logging.info(f"{__class__.__name__}.__init__()")
         self.robot = robot        
         self.humans = []
         self.info = Info()
         self.chat_histories = {}
         self.chat_buffer_size = 4
+        self.max_memory_insert_size = 3
         self.sentiment = Sentiment()
         self.is_debug = is_debug
         
@@ -106,6 +107,7 @@ class Conversation():
             chat_history.dialogue = chat_history.dialogue[-history_size:]
         # Mix in human memories
         human = self.get_human(commentor)
+        memory_insert_count = 0
         for index in range(len(human.positive_memories)):
             # Randomly insert memories
             if random() > 0.5:
@@ -119,6 +121,10 @@ class Conversation():
             if not is_memory_included:
                 #print(f"Inserting memory to prompt: memory = {memory}")
                 chat_history.dialogue = [memory.prompt, memory.comment, memory.response] + chat_history.dialogue
+            # Iterate memory insert count
+            memory_insert_count += 1
+            if memory_insert_count > self.max_memory_insert_size:
+                break
         
         prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
         prompt += "<START>\n"
@@ -220,8 +226,8 @@ class Conversation():
         wav, rate = self.robot.read_response(output)
         
         # If should speak response
-        if is_speak_response:
-            IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
+        #if is_speak_response:
+        #    IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(output)
