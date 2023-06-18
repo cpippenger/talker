@@ -13,6 +13,13 @@ import nltk
 nltk.download('punkt')
 nltk.download('averaged_perceptron_tagger')
 
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s — %(message)s',
+                    datefmt='%Y-%m-%d_%H:%M:%S',
+                    handlers=[logging.FileHandler('chat.log', encoding='utf-8')])
+
 robot = Robot(
               name="Billy",
               persona="An old hand puppet.",
@@ -33,7 +40,7 @@ def read_root():
 
 @app.get("/message/{user_id}")
 def read_message(user_id: str, query: Union[str, None] = None):
-    print({"user_id": user_id, "q": query})
+    logging.info({"user_id": user_id, "q": query})
     input_dict = json.loads(query)
     if "comment" not in input_dict:
         return {"response":"Error: Missing require input: 'comment'"}
