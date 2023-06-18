@@ -5,7 +5,7 @@ import num2words
 import torch
 import pickle
 import logging
-from accelerate import init_empty_weights
+#from accelerate import init_empty_weights
 import transformers
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
@@ -38,27 +38,28 @@ class Robot():
                 ):
         logging.info(f"{__class__.__name__}.{__name__}(): (name={name}, persona={persona}, model_name={model_name})")
         self.name = name
+        self.context_token_limit = 2000
         self.persona = persona
         self.stopping_words = [
                               "You:", f"{self.name}:", 
                               "<BOT>", "</BOT>",
-                              "<START>",
+                              "START>",
                               "Persona:"
                               "Lilly",
-                              "Ashlee"
+                              "Ashlee", "Malcom"
                               #"\n\n", 
                               #"\n ",
                               #"\\x", "1b", "33m"
                               ]
         self.prompt_spices = ["Say it to me sexy.", "You horny puppet."]
         self.prompt_emotions = ["positive", "negative"]
-        self.filter_words = [" kill ", " die ", " murder ", " kidnap ", " rape ", "tied to a chair", "ungrateful bitch"]
-        self.replace_words = [" cuddle "]
-        self.filter_words = [" killed ", " died ", " murdered ", " kidnapped ", " raped ", "tied to a chair", "ungrateful bitch"]
-        self.replace_words = [" cuddled "]
+        self.filter_list = []
+        self.filter_list.append([[" kill ", " die ", " murder ", " kidnap ", " rape ", "tied to a chair", "ungrateful bitch"], [" cuddle "]])
+        self.filter_list.append([[" killed ", " died ", " murdered ", " kidnapped ", " raped "], [" cuddled "]])
+        self.filter_list.append([[" killing ", " dying ", " murdering ", " kidnapping ", " raping "], [" cuddling "]])
         self.is_debug = is_debug
-        self.model_name = model_file
-        self.model_file = model_name
+        self.model_name = model_name
+        self.model_file = model_file
         self.finetune_path = finetune_path
         self.model = None
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
@@ -70,7 +71,7 @@ class Robot():
             "stopping_words" : self.stopping_words,
             "prompt_spices" : self.prompt_spices,
             "prompt_emotions" : self.prompt_emotions,
-            "filter_words" : self.filter_words,
+            "filter_list" : self.filter_list,
             "replace_words" : self.replace_words,
             "is_debug" : self.is_debug,
             "model_name" : self.model_name,
@@ -91,7 +92,7 @@ class Robot():
         self.stopping_words = values["stopping_words"]
         self.prompt_spices = values["prompt_spices"]
         self.prompt_emotions = values["prompt_emotions"]
-        self.filter_words = values["filter_words"]
+        self.filter_list = values["filter_list"]
         self.replace_words = values["replace_words"]
         self.is_debug = values["is_debug"]
         self.model_name = values["model_name"]
@@ -129,7 +130,7 @@ class Robot():
         self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
         self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
         
-
+        return True
     
     def read_response(self, text:str, rate_modifier=None, is_say=False):
         """
@@ -172,7 +173,7 @@ class Robot():
                 wav = self.hifi_gan.decode_batch(mel_output)
                 wav = wav.squeeze(1)
             except:
-                logging.error(f"{Color.F_Red}{__class__.__name__}.{__name__}(): Failed to read text = {text}{Color.F_White}")
+                logging.error(f"{Color.F_Red}{__class__.__name__}.read_response(): Failed to read text = {text}{Color.F_White}")
             
         rate = 22050 * 1.07
         
@@ -218,6 +219,11 @@ class Robot():
                 starting_idx=tokenized_items.input_ids.shape[-1]))            
         stopping_criteria_list = StoppingCriteriaList(stopping_list)
         
+        logging.info(f"{__class__.__name__}.get_robot_response(): input token length = {tokenized_items['input_ids'].shape}")
+
+        if tokenized_items['input_ids'].shape[0] > self.context_token_limit:
+            logging.warning(f"{__class__.__name__}.get_robot_response(): Context length too long. tokenized_items['input_ids'].shape[0] = {tokenized_items['input_ids'].shape[0]}")
+
         # Generate response logits from model
         #logging.info(f"{__class__.__name__}.{__name__}(): Generating output")
         #logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
@@ -243,16 +249,15 @@ class Robot():
         output = output[len(prompt)+1:]
         
         #print (f"get_robot_response(): Processing output")
-        for filter_word in stopping_words:
-            if filter_word in output:
-                output = output[0:output.index(filter_word)]
+        for stop_word in stopping_words:
+            if stop_word in output:
+                output = output[0:output.index(stop_word)]
             
         output = output.rstrip()
         
         if "<USER>" in output:
             output = output.replace("<USER>", person)
 
-        
         # Remove visual expressions
         run_count = 0
         max_run_count = 10
@@ -284,11 +289,14 @@ class Robot():
             output = output[0:max_len]
             
         # If bad word in 
-        for filter_word in self.filter_words:
-            if filter_word in output:
-                replacement = choice(self.replace_words)
-                logging.info(f"{__class__.__name__}.get_robot_response(): Replacing {filter_word}, {replacement}")
-                output = output.replace(filter_word, replacement)
+        for index in range(len(self.filter_list)):
+            filter_words = self.filter_list[index][0]
+            replace_words = self.filter_list[index][1]
+            for filter_word in filter_words:
+                if filter_word in output:
+                    replacement = choice(replace_words)
+                    logging.info(f"{__class__.__name__}.get_robot_response(): Replacing {filter_word}, {replacement}")
+                    output = output.replace(filter_word, replacement)
         
         output = output.replace("Hehe", "Haha")
         output = output.replace("hehe", "haha")
