@@ -1,0 +1,52 @@
+# Basic
+#cffi
+pandas
+jupyter 
+scipy 
+matplotlib 
+#cloudpickle==1.3.0
+#pyglet==1.5.0
+#lmdb
+num2words
+
+# External data
+googlesearch-python
+wikipedia
+
+# Machine Learning
+#torch
+#torchaudio
+#transformers
+#datasets
+#deepspeed
+#accelerate
+
+# Text to speech
+#fairseq
+#speechbrain
+
+
+# NLP
+#stanza
+mpld3
+nltk
+
+# Deep learning
+#tensorflow 
+#keras 
+#h5py 
+#keras-rl
+#baselines
+#tensorforce
+
+# AI Gym requirements
+#PyOpenGL
+#piglet
+
+# Other
+JSAnimation
+ipywidgets
+
+# Image
+#opencv-python
+#scikit-image

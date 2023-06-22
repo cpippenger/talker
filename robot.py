@@ -33,8 +33,8 @@ class Robot():
                  persona:str,
                  model_name:str="PygmalionAI/pygmalion-6b",
                  model_file:str=None,
+                 finetune_path:str=None,
                  is_debug=False,
-                 finetune_path:str=None
                 ):
         logging.info(f"{__class__.__name__}.{__name__}(): (name={name}, persona={persona}, model_name={model_name})")
         self.name = name
@@ -62,6 +62,7 @@ class Robot():
         self.model_file = model_file
         self.finetune_path = finetune_path
         self.model = None
+        self.init_models()
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
     def to_dict(self):
@@ -100,22 +101,22 @@ class Robot():
         self.finetune_path = values["finetune_path"]
         
 
-    def init_models(self, model_file, model_name, finetune_path):
-        if model_file:
-            logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {model_file}")
-            self.model_source = model_file
-            self.model = AutoModelForCausalLM.from_pretrained(model_file, local_files_only=True)
-            self.tokenizer = AutoTokenizer.from_pretrained(model_file)
-        elif finetune_path:
-            logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {finetune_path}")
-            self.model_source = finetune_path
-            self.model = AutoModelForCausalLM.from_pretrained(finetune_path)
-            self.tokenizer = AutoTokenizer.from_pretrained(finetune_path)
-        elif model_name:
-            logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {model_name}")
-            self.model_source = model_name
-            self.model = AutoModelForCausalLM.from_pretrained(model_name)
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+    def init_models(self):
+        if self.model_file:
+            logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {self.model_file}")
+            self.model_source = self.model_file
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_file, local_files_only=True)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_file)
+        elif self.finetune_path:
+            logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {self.finetune_path}")
+            self.model_source = self.finetune_path
+            self.model = AutoModelForCausalLM.from_pretrained(self.finetune_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.finetune_path)
+        elif self.model_name:
+            logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
+            self.model_source = self.model_name
+            self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             #config = AutoConfig.from_pretrained(model_name)
             ##with init_empty_weights():
             #self.model = AutoModelForCausalLM.from_config(config)
@@ -199,7 +200,14 @@ class Robot():
         # Randomly prepend the output with the person's name
         if random() > .85:
             prompt = f"Well {person} " + prompt
-            
+
+        # If prompt is longer than max allowed input size
+        if len(prompt.split(" ")) > 1024:
+            logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Prompt too long: {len(prompt.split(' '))} {Color.F_White}")
+            prompt = prompt.split(" ")
+            prompt = prompt[-1024:]
+            prompt = " ".join(prompt)
+
         #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
         # Encode input strings
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
@@ -232,14 +240,15 @@ class Robot():
         #                             do_sample=True,
         #                             **tokenized_items
         #                            )
-        logits = self.model.generate(
-                                     input_ids=tokenized_items["input_ids"],
-                                     stopping_criteria=stopping_criteria_list, 
-                                     min_length=min_len+len(prompt), 
-                                     max_length=max_len+len(prompt), 
-                                     do_sample=True,
-                                     pad_token_id=self.tokenizer.eos_token_id
-                                    )
+        with torch.no_grad():
+            logits = self.model.generate(
+                                        input_ids=tokenized_items["input_ids"],
+                                        stopping_criteria=stopping_criteria_list, 
+                                        min_length=min_len+len(prompt), 
+                                        max_length=max_len+len(prompt), 
+                                        do_sample=True,
+                                        pad_token_id=self.tokenizer.eos_token_id
+                                        )
         
         
         #print (f"get_robot_response(): Decoding output")

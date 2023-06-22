@@ -84,7 +84,7 @@ class Conversation():
     
     def build_prompt(self,
                      commentor:str,
-                     history_size:int=6
+                     history_size:int=4
                     ):
         """
         Built an input prompt for the model given then 
@@ -133,10 +133,10 @@ class Conversation():
         prompt += chat_history.prompt()
         
         # Randomly add things to prompt to steer conversation
-        if random() > 0.75:
-            prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
-        if random() > 0.5:
-            prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
+        #if random() > 0.75:
+        #    prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
+        #if random() > 0.5:
+        #    prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
         
         # Robot name prompt
         prompt += f"{self.robot.name}:"
@@ -237,7 +237,7 @@ class Conversation():
         
         if len(chat_history.dialogue) > 2:
             logging.info(f"{__class__.__name__}.{func_name}(): last comment = {self.chat_histories[commentor].dialogue[-2].comment}")
-            logging.info(f"{__class__.__name__}.{func_name}():  sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
+            logging.info(f"{__class__.__name__}.{func_name}(): sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
         # If has a complete set of prompt, generated response and user response
         if len(chat_history.dialogue) > 3: 
             # If the sentiment of the user response was positive
