@@ -1,3 +1,7 @@
+# Adapted from Pytorch official docker file
+# https://github.com/pytorch/pytorch/blob/main/Dockerfile
+
+# Set up base Ubuntu 20 image
 ARG BASE_IMAGE=ubuntu:20.04
 ARG PYTHON_VERSION=3.10
 
@@ -18,11 +22,11 @@ RUN /usr/sbin/update-ccache-symlinks
 RUN mkdir /opt/ccache && ccache --set-config=cache_dir=/opt/ccache
 ENV PATH /opt/conda/bin:$PATH
 
+# Setup Conda, install Python and requirements.txt
 FROM dev-base as conda
 ARG PYTHON_VERSION=3.10
-# Automatically set by buildx
-ARG TARGETPLATFORM
-# translating Docker's TARGETPLATFORM into miniconda arches
+ARG TARGETPLATFORM # Automatically set by buildx
+# Translate Docker's TARGETPLATFORM into miniconda arches
 RUN case ${TARGETPLATFORM} in \
          "linux/arm64")  MINICONDA_ARCH=aarch64  ;; \
          *)              MINICONDA_ARCH=x86_64   ;; \
@@ -36,7 +40,7 @@ RUN chmod +x ~/miniconda.sh && \
     /opt/conda/bin/conda install -y python=${PYTHON_VERSION} cmake conda-build pyyaml numpy ipython && \
     /opt/conda/bin/python -mpip install -r requirements.txt && \
     /opt/conda/bin/conda clean -ya
-
+∂
 FROM dev-base as submodule-update
 WORKDIR /opt/pytorch
 COPY . .
