@@ -184,11 +184,16 @@ class Robot():
         logging.info(f"{__class__.__name__}.read_response(): runtime = {runtime}")
         return wav, rate
         
+
+    #def post_process_output(self, output):
+
+    
     def get_robot_response(self,
                            person:str,
                            prompt:str,
                            min_len:int=128,
-                           max_len:int=256
+                           max_len:int=256,
+                           response_count = 1
                           ):
         start_time = time.time()
         #logging.info(f"{__class__.__name__}.{__name__}(person={person}, prompt={prompt}, min_len={min_len}, max_len={max_len})")
@@ -211,7 +216,14 @@ class Robot():
         #bot_input_ids = self.tokenizer.encode(prompt + self.tokenizer.eos_token, return_tensors='pt')
         # Encode input strings
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
-        
+
+        if response_count > 1:
+            for index in range(response_count):
+                tokenized_items["input_ids"] = torch.cat((tokenized_items["input_ids"], tokenized_items["input_ids"].clone()), dim=0)
+                tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
+
+        outputs = []
+
         stopping_words = self.stopping_words + [f"{person}:"]
         
         # Create stopping criteria for generation
@@ -232,14 +244,7 @@ class Robot():
         if tokenized_items['input_ids'].shape[0] > self.context_token_limit:
             logging.warning(f"{__class__.__name__}.get_robot_response(): Context length too long. tokenized_items['input_ids'].shape[0] = {tokenized_items['input_ids'].shape[0]}")
 
-        # Generate response logits from model
-        #logging.info(f"{__class__.__name__}.{__name__}(): Generating output")
-        #logits = self.model.generate(stopping_criteria=stopping_criteria_list, 
-        #                             min_length=min_len+len(prompt), 
-        #                             max_length=max_len+len(prompt), 
-        #                             do_sample=True,
-        #                             **tokenized_items
-        #                            )
+        # Generate output logits from model
         with torch.no_grad():
             logits = self.model.generate(
                                         input_ids=tokenized_items["input_ids"],
@@ -250,68 +255,74 @@ class Robot():
                                         pad_token_id=self.tokenizer.eos_token_id
                                         )
         
-        
-        #print (f"get_robot_response(): Decoding output")
-        # Decode output logits to words
-        output = self.tokenizer.decode(logits[0], skip_special_tokens=True)
-        # Filter input
-        output = output[len(prompt)+1:]
-        
-        #print (f"get_robot_response(): Processing output")
-        for stop_word in stopping_words:
-            if stop_word in output:
-                output = output[0:output.index(stop_word)]
+        # For each output
+        for output_index in range(len(logits)):
+            #print (f"get_robot_response(): Decoding output")
             
-        output = output.rstrip()
-        
-        if "<USER>" in output:
-            output = output.replace("<USER>", person)
+            # Decode output logits to words
+            output = self.tokenizer.decode(logits[output_index], skip_special_tokens=True)
+            # Filter input
+            output = output[len(prompt)+1:]
 
-        # Remove visual expressions
-        run_count = 0
-        max_run_count = 10
-        # Use regex to match strings like *[TEXT]* 
-        match = re.search("(?<=\*)(.*?)(?=\*)", output)
-        while match and run_count < max_run_count:
-            run_count += 1
-            output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
+            #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
+            #print (f"get_robot_response(): Processing output")
+            for stop_word in stopping_words:
+                if stop_word in output:
+                    output = output[0:output.index(stop_word)]
+                
+            output = output.rstrip()
+            
+            if "<USER>" in output:
+                output = output.replace("<USER>", person)
+
+            # Remove visual expressions
+            run_count = 0
+            max_run_count = 10
+            # Use regex to match strings like *[TEXT]* 
             match = re.search("(?<=\*)(.*?)(?=\*)", output)
-        run_count = 0
-        # Use regex to match strings like [[TEXT]] 
-        match = re.search("(?<=\[)(.*?)(?=\])", output)
-        while match and run_count < max_run_count:
-            run_count += 1
-            output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
-            match = re.search("(?<=\*)(.*?)(?=\*)", output)
+            while match and run_count < max_run_count:
+                run_count += 1
+                output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
+                match = re.search("(?<=\*)(.*?)(?=\*)", output)
+            run_count = 0
+            # Use regex to match strings like [[TEXT]] 
+            match = re.search("(?<=\[)(.*?)(?=\])", output)
+            while match and run_count < max_run_count:
+                run_count += 1
+                output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
+                match = re.search("(?<=\*)(.*?)(?=\*)", output)
+                
+            # Strip whitepsace
+            output = output.strip()
             
-        # Strip whitepsace
-        output = output.strip()
-        
-        # Remove all added prompts
-        for spice in self.prompt_spices:
-            output = output.replace(spice, "")
-        for emotion in self.prompt_emotions:
-            output = output.replace(f"Be {emotion}.", "")
+            # Remove all added prompts
+            for spice in self.prompt_spices:
+                output = output.replace(spice, "")
+            for emotion in self.prompt_emotions:
+                output = output.replace(f"Be {emotion}.", "")
+                
+            if len(output) > max_len * 2:
+                logging.info(f"{__class__.__name__}.get_robot_response(): Ouput too large len(output) = {len(output)}")
+                output = output[0:max_len]
+                
+            # If bad word in 
+            for index in range(len(self.filter_list)):
+                filter_words = self.filter_list[index][0]
+                replace_words = self.filter_list[index][1]
+                for filter_word in filter_words:
+                    if filter_word in output:
+                        replacement = choice(replace_words)
+                        logging.info(f"{__class__.__name__}.get_robot_response(): Replacing {filter_word}, {replacement}")
+                        output = output.replace(filter_word, replacement)
             
-        if len(output) > max_len * 2:
-            logging.info(f"{__class__.__name__}.get_robot_response(): Ouput too large len(output) = {len(output)}")
-            output = output[0:max_len]
-            
-        # If bad word in 
-        for index in range(len(self.filter_list)):
-            filter_words = self.filter_list[index][0]
-            replace_words = self.filter_list[index][1]
-            for filter_word in filter_words:
-                if filter_word in output:
-                    replacement = choice(replace_words)
-                    logging.info(f"{__class__.__name__}.get_robot_response(): Replacing {filter_word}, {replacement}")
-                    output = output.replace(filter_word, replacement)
-        
-        output = output.replace("Hehe", "Haha")
-        output = output.replace("hehe", "haha")
-        # Replace numbers with words
-        output = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0))), output)
-        #output = output.replace(f"Well {person} Well Alec", "haha")
+            output = output.replace("Hehe", "Haha")
+            output = output.replace("hehe", "haha")
+            # Replace numbers with words
+            output = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0))), output)
+            #output = output.replace(f"Well {person} Well Alec", "haha")
+            #logging.info(f"{__class__.__name__}.get_robot_response(): After output processing = {output}")
+
+            outputs.append(output)
         
         #print (f"get_robot_response(): Clearing gpu memory")
         # Clear memory
@@ -320,7 +331,7 @@ class Robot():
         #print (f"get_robot_response(): Done")
         runtime = time.time() - start_time
         logging.info(f"{__class__.__name__}.get_robot_response(): runtime = {runtime}")
-        return output
+        return outputs
     
 class _SentinelTokenStoppingCriteria(transformers.StoppingCriteria):
 
