@@ -16,7 +16,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         gcc \
         libjpeg-dev \
         libpng-dev \
-        nano &&\
+        nano \
+        curl \
+        unzip \
+        wget &&\
     rm -rf /var/lib/apt/lists/*
 RUN /usr/sbin/update-ccache-symlinks
 RUN mkdir /opt/ccache && ccache --set-config=cache_dir=/opt/ccache
@@ -40,12 +43,14 @@ RUN chmod +x ~/miniconda.sh && \
     /opt/conda/bin/conda install -y python=${PYTHON_VERSION} cmake conda-build pyyaml numpy ipython && \
     /opt/conda/bin/python -mpip install -r requirements.txt && \
     /opt/conda/bin/conda clean -ya
-∂
+
+
 FROM dev-base as submodule-update
 WORKDIR /opt/pytorch
 COPY . .
 #RUN git submodule update --init --recursive
 
+# Create a layer to store conda libraries
 FROM conda as build
 ARG CMAKE_VARS
 WORKDIR /opt/pytorch
@@ -57,23 +62,17 @@ COPY --from=conda /opt/conda /opt/conda
 #    CMAKE_PREFIX_PATH="$(dirname $(which conda))/../" \
 #    python setup.py install
 
+
 FROM conda as conda-installs
 ARG PYTHON_VERSION=3.10
-ARG CUDA_VERSION=12
+ARG CUDA_VERSION=118
 ARG CUDA_CHANNEL=nvidia
 ARG INSTALL_CHANNEL=pytorch-nightly
 # Automatically set by buildx
 RUN /opt/conda/bin/conda update -y conda
 RUN /opt/conda/bin/conda install -c "${INSTALL_CHANNEL}" -y python=${PYTHON_VERSION}
 ARG TARGETPLATFORM
-
-# On arm64 we can only install wheel packages.
-RUN case ${TARGETPLATFORM} in \
-         "linux/arm64")  pip install --extra-index-url https://download.pytorch.org/whl/cpu/ torch torchvision torchaudio torchtext ;; \
-         *)              /opt/conda/bin/conda install -c "${INSTALL_CHANNEL}" -c "${CUDA_CHANNEL}" -y "python=${PYTHON_VERSION}" pytorch torchvision torchaudio torchtext "pytorch-cuda=$(echo $CUDA_VERSION | cut -d'.' -f 1-2)"  ;; \
-    esac && \
-    /opt/conda/bin/conda clean -ya
-RUN /opt/conda/bin/pip install torchelastic
+#RUN /opt/conda/bin/pip install torchelastic
 
 FROM ${BASE_IMAGE} as official
 ARG PYTORCH_VERSION
@@ -110,18 +109,37 @@ COPY custom/ /root/.jupyter/
 # Enable Jupyter widgets
 RUN jupyter nbextension enable --py --sys-prefix widgetsnbextension
 
+# TODO: Generate notebook config
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        ccache \
+        cmake \
+        curl \
+        git \
+        gcc \
+        nano \
+        curl \
+        unzip \
+        wget
+
+# Install ML libs
+RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip install bitsandbytes
+RUN pip install bitsandbytes
+RUN pip install safetensors
+RUN pip install tokenizers
+RUN pip install --upgrade --no-deps --force-reinstall -U huggingface_hub
+RUN pip install --upgrade --no-deps --force-reinstall -U git+https://github.com/huggingface/transformers.git
+RUN pip install  --upgrade --no-deps --force-reinstall -U git+https://github.com/huggingface/peft.git 
+RUN pip install  --upgrade --no-deps --force-reinstall -U git+https://github.com/huggingface/accelerate.git
+
 # Set up aws
 # Source: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
-RUN apt-get update
-RUN apt-get install -y curl
-RUN apt-get install -y unzip
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-RUN unzip awscliv2.zip
-RUN ./aws/install
-
-
-RUN apt-get install -y git
-
+#RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+#RUN unzip awscliv2.zip
+#RUN ./aws/install
 
 EXPOSE 3141
 EXPOSE 8888

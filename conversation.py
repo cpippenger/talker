@@ -237,7 +237,7 @@ class Conversation():
         
         if len(chat_history.dialogue) > 2:
             logging.info(f"{__class__.__name__}.{func_name}(): last comment = {self.chat_histories[commentor].dialogue[-2].comment}")
-            logging.info(f"{__class__.__name__}.{func_name}(): sentiment = {self.chat_histories[commentor].dialogue[-2].sentiment}")
+            logging.info(f"{__class__.__name__}.{func_name}(): {self.chat_histories[commentor].dialogue[-2].sentiment}")
         # If has a complete set of prompt, generated response and user response
         if len(chat_history.dialogue) > 3: 
             # If the sentiment of the user response was positive
