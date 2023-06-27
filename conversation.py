@@ -147,7 +147,8 @@ class Conversation():
                         commentor:str, 
                         comment:str,
                         response_length_modifier:int=0,
-                        min_allowed_respose_len=2,
+                        min_allowed_respose_len:int=2,
+                        response_count:int=1,
                         is_speak_response:bool=False
                        ):
         """
@@ -203,54 +204,42 @@ class Conversation():
         logging.info("-"*100)
 
         # Randomize length of response
-        min_len = 256 + int(256 * random()) + response_length_modifier
-        max_len = 512 + int(1024 * random()) + response_length_modifier
+        min_len = 32 + int(32 * random()) + response_length_modifier
+        max_len = 128 + int(1024 * random()) + response_length_modifier
         logging.info(f"{__class__.__name__}.{func_name}(): min_len = {min_len}, max_len = {max_len}")
         # Generate output from the robot given the prompt
-        outputs = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len, response_count=2)
+        outputs = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len, response_count=response_count)
 
-
-        output_scores = np.zeros(len(outputs))
-        longest_output_count = 0
-        longest_output_index = 0
-
-        for index in range(len(outputs)):
-            output = outputs[index]
-            if len(output) > longest_output_count:
-                longest_output_count = len(output)
-                longest_output_index = index
-
-            
-            sentiment_dict = self.sentiment.get_sentiment(output)
-            sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
-            comment = Comment(self.robot.name, output, sentiment)
-            output_scores[index] = sentiment_dict["positive_score"]
-            logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] : {round(sentiment_dict['positive_score'],2)} : {comment.printf()}")
-            
-        output_scores[longest_output_index] += 0.5
-
-        top_index = np.argmax(output_scores)
-        logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
-
-        output = outputs[top_index]
-        """
-        # Maybe retry generating output if it did not meet requirements
-        retry_count = 4
-        retry = 0
-        should_retry = False
-        if len(output) < min_allowed_respose_len:
-            logging.info(f"{__class__.__name__}.{func_name}(): Output not long enough len(output) = {len(output)} ")
-            should_retry = True
-        while retry < retry_count and should_retry:
-            logging.info(f"{__class__.__name__}.{func_name}(): Output = {output}")
-            logging.info(f"{__class__.__name__}.{func_name}(): Regenerating {retry}")
-            retry += 1
-            output = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len)
-            should_retry = (len(output) < min_allowed_respose_len)
-        """
+        if len(outputs) == 0:
+            output = "Huh I don't know what to say"
+        elif len(outputs) == 1:
+            output = outputs[0]
+        elif len(outputs) > 1:
+            # Score each output
+            output_scores = np.zeros(len(outputs))
+            longest_output_count = 0
+            longest_output_index = 0
+            for index in range(len(outputs)):
+                output = outputs[index]
+                if len(output) > longest_output_count:
+                    longest_output_count = len(output)
+                    longest_output_index = index
+                sentiment_dict = self.sentiment.get_sentiment(output)
+                sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
+                comment = Comment(self.robot.name, output, sentiment)
+                output_scores[index] = sentiment_dict["positive_score"]
+                logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] : {round(sentiment_dict['positive_score'],2)} : {comment.printf()}")
+            # Give the longest response a boost in score
+            output_scores[longest_output_index] += 0.25
+            # Get the top scoring index
+            top_index = np.argmax(output_scores)
+            logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
+            # Pick the response to use
+            output = outputs[top_index]
 
         # Text to speech output 
-        wav, rate = self.robot.read_response(output)
+        #wav, rate = self.robot.read_response(output)
+        wav, rate = None, None
         
         # If should speak response
         #if is_speak_response:
@@ -285,7 +274,8 @@ class Conversation():
                 human.add_negative_memory(Memory(prompt, comment, response))
 
         runtime = time.time() - start_time
-        logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
+        tokens_per_sec = len(output.split(" ")) / runtime
+        logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}, tokens_per_sec = {tokens_per_sec}")
         return output, wav, rate
     
     
@@ -338,12 +328,12 @@ class ChatHistory():
         if count:
             out_str = ""
             for comment in self.dialogue[-count:]:
-                out_str += comment.printf()
+                out_str += str(comment.printf())
                 out_str += " \n"
         else:
             out_str = ""
             for comment in self.dialogue:
-                out_str += comment.printf()
+                out_str += str(comment.printf())
                 out_str += " \n"
         return out_str
     
