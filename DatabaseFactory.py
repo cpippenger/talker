@@ -26,6 +26,8 @@ class DatabaseFactory:
                 for desc in cursor.description:
                     data[desc[0]]=rowdata[i] # better way?
                     i=i+1
+            else: 
+                cursor.fetchone()
             cursor.close()
             
         except OperationalError as err:

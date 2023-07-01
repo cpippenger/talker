@@ -7,6 +7,7 @@ import pickle
 import logging
 #from accelerate import init_empty_weights
 import transformers
+from transformers import BitsAndBytesConfig
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
 from numpy.random import random, choice
@@ -35,6 +36,8 @@ class Robot():
                  model_file:str=None,
                  finetune_path:str=None,
                  is_debug=False,
+                 is_use_gpu=True,
+                 is_use_bnb=True
                 ):
         logging.info(f"{__class__.__name__}.{__name__}(): (name={name}, persona={persona}, model_name={model_name})")
         self.name = name
@@ -42,7 +45,7 @@ class Robot():
         self.persona = persona
         self.stopping_words = [
                               "You:", 
-                              #f"{self.name}:", 
+                              #f"{self.name}: ", 
                               "<BOT>", "</BOT>",
                               "START>",
                               "Persona:"
@@ -50,7 +53,6 @@ class Robot():
                               "Ashlee", "Malcom"
                               #"\n\n", 
                               #"\n ",
-                              #"\\x", "1b", "33m"
                               ]
         self.prompt_spices = ["Say it to me sexy.", "You horny puppet."]
         self.prompt_emotions = ["positive", "negative"]
@@ -63,6 +65,12 @@ class Robot():
         self.model_file = model_file
         self.finetune_path = finetune_path
         self.model = None
+        self.is_use_bnb = is_use_bnb
+        self.is_use_gpu = is_use_gpu
+        self.stats = {
+            "tokens_per_sec" : 0,
+            "response_times" : []
+        }
         self.init_models()
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
@@ -103,29 +111,65 @@ class Robot():
         
 
     def init_models(self):
-        if self.model_file:
-            logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {self.model_file}")
-            self.model_source = self.model_file
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_file, local_files_only=True)
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_file)
-        elif self.finetune_path:
-            logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {self.finetune_path}")
-            self.model_source = self.finetune_path
-            self.model = AutoModelForCausalLM.from_pretrained(self.finetune_path)
-            self.tokenizer = AutoTokenizer.from_pretrained(self.finetune_path)
-        elif self.model_name:
-            logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
-            self.model_source = self.model_name
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            #config = AutoConfig.from_pretrained(model_name)
-            ##with init_empty_weights():
-            #self.model = AutoModelForCausalLM.from_config(config)
+        # If using bits and bytes: https://huggingface.co/blog/4bit-transformers-bitsandbytes
+        if self.is_use_bnb:
+            logging.info(f"{__class__.__name__}.{__name__}(): Using bnb to quantize model")
+            # Init bits and bytes config
+            nf4_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.bfloat16
+            )
+            if self.model_file:
+                logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {self.model_file}")
+                self.model_source = self.model_file
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_file, local_files_only=True, quantization_config=nf4_config)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_file)
+            elif self.finetune_path:
+                logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {self.finetune_path}")
+                self.model_source = self.finetune_path
+                self.model = AutoModelForCausalLM.from_pretrained(self.finetune_path, quantization_config=nf4_config)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.finetune_path)
+            elif self.model_name:
+                logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
+                self.model_source = self.model_name
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name, quantization_config=nf4_config)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                #config = AutoConfig.from_pretrained(model_name)
+                ##with init_empty_weights():
+                #self.model = AutoModelForCausalLM.from_config(config)
+        else:
+            if self.model_file:
+                logging.info(f"{__class__.__name__}.{__name__}(): Load saved model {self.model_file}")
+                self.model_source = self.model_file
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_file, local_files_only=True)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_file)
+            elif self.finetune_path:
+                logging.info(f"{__class__.__name__}.{__name__}(): Load fine tuned model: {self.finetune_path}")
+                self.model_source = self.finetune_path
+                self.model = AutoModelForCausalLM.from_pretrained(self.finetune_path)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.finetune_path)
+            elif self.model_name:
+                logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
+                self.model_source = self.model_name
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                #config = AutoConfig.from_pretrained(model_name)
+                ##with init_empty_weights():
+                #self.model = AutoModelForCausalLM.from_config(config)
 
-        logging.info(f"{__class__.__name__}.{__name__}(): Setting precision to fp16")
-        self.model.half()
-        logging.info(f"{__class__.__name__}.{__name__}(): Send model to gpu")
-        self.model.to("cuda")
+
+        # If not using bits and bytes to control model devive deployment
+        if not self.is_use_bnb:
+            # Set precision to 16 bit
+            logging.info(f"{__class__.__name__}.{__name__}(): Setting precision to fp16")
+            self.model.half()
+            # If is using gpu
+            if self.is_use_gpu:
+                # Send model to gpu
+                logging.info(f"{__class__.__name__}.{__name__}(): Send model to gpu")
+                self.model.to("cuda")
         logging.info(f"{__class__.__name__}.{__name__}(): Done")
 
         # Init text to speach model
@@ -196,12 +240,38 @@ class Robot():
                            max_len:int=256,
                            response_count = 1
                           ):
+        """
+        Given a user the robot is interacting with and a prompt containing a new comment from the user,
+        generate and return a response to the user's comment. 
+
+        Parameters:
+        -----------
+        person : String
+            The name of the user making a comment
+        comment : String
+            The comment from the user
+        min_len : int
+            The minimum desired length of the comment.
+            Will not allows reach this number because of stopping conditions.
+        max_len : int
+            The maximum desired length of the context.
+            Will cut off a sentence mid word.
+            TODO: Look into finding cut off sentences and prune them.
+        reponse_count : int
+            The number of responses to generate before selecting the best one.
+
+        Returns:
+        --------
+        String - Containing the generated output from the model.
+        """
+        logging.info(f"{__class__.__name__}.get_robot_response({person=}, prompt, {min_len=}, {max_len=}, {response_count=})")
+        # Save start time
         start_time = time.time()
-        #logging.info(f"{__class__.__name__}.{__name__}(person={person}, prompt={prompt}, min_len={min_len}, max_len={max_len})")
+        # Check if needs to init models
         if not self.model:
             logging.error(f"{Color.F_Red}{__class__.__name__}.get_robot_response(): Error models not intialized{Color.F_White}")
+            # Init models
             self.init_models(self.model_file, self.model_name, self.finetune_path)
-        #logging.info(f"{__class__.__name__}.{__name__}(): Encoding input")
         
         # Randomly prepend the output with the person's name
         #if random() > .85:
@@ -215,18 +285,18 @@ class Robot():
             prompt = " ".join(prompt)
 
         # Encode input strings
-        tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+        tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda" if self.is_use_gpu else "cpu")
 
+        # If needs to generate more than one response
         if response_count > 1:
+            # For each response required
             for index in range(response_count-1):
+                # Append a copy of the input to itself
                 tokenized_items["input_ids"] = torch.cat((tokenized_items["input_ids"], tokenized_items["input_ids"].clone()), dim=0)
                 #tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
 
-        outputs = []
-
-        stopping_words = self.stopping_words + [f"{person}: "]
-        
         # Create stopping criteria for generation
+        stopping_words = self.stopping_words + [f"{person}: ", f"{person.upper()}: "]
         stopping_list = []
         for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(
@@ -234,29 +304,36 @@ class Robot():
                     stopping_word,
                     add_special_tokens=False,
                     return_tensors="pt",
-                #).input_ids,
-                ).input_ids.to("cuda"),
+                ).input_ids.to("cuda" if self.is_use_gpu else "cpu"),
                 starting_idx=tokenized_items.input_ids.shape[-1]))            
         stopping_criteria_list = StoppingCriteriaList(stopping_list)
         
+        # Show input token length
         logging.info(f"{__class__.__name__}.get_robot_response(): input token length = {tokenized_items['input_ids'].shape}")
 
+        # Check if the input is larger that the max allowed input
         if tokenized_items['input_ids'].shape[0] > self.context_token_limit:
             logging.warning(f"{__class__.__name__}.get_robot_response(): Context length too long. tokenized_items['input_ids'].shape[0] = {tokenized_items['input_ids'].shape[0]}")
+
+        # Check that the input and model are on the same device
+        if tokenized_items["input_ids"].get_device() != self.model.device:
+            logging.error(f"{__class__.__name__}.get_robot_response(): input and model on difference devices")
+            logging.info(f"{__class__.__name__}.get_robot_response(): input device = {tokenized_items['input_ids'].get_device()}")
+            logging.info(f"{__class__.__name__}.get_robot_response(): model device = {self.model.device}")
 
         # Generate output logits from model
         with torch.no_grad():
             logits = self.model.generate(
                                         input_ids=tokenized_items["input_ids"],
                                         stopping_criteria=stopping_criteria_list, 
-                                        #min_length=min_len+len(prompt), 
-                                        #max_length=max_len+len(prompt), 
-                                        min_length=min_len, 
-                                        max_length=max_len, 
+                                        min_length=min_len+len(prompt), 
+                                        max_length=max_len+len(prompt),
                                         do_sample=True,
                                         pad_token_id=self.tokenizer.eos_token_id
                                         )
         
+        # Save a list of all possible outputs generated
+        outputs = []
         # For each output
         for output_index in range(len(logits)):
             # Decode output logits to words
@@ -272,7 +349,7 @@ class Robot():
                 continue
 
             # Check if got enough output
-            if token_count < 10:
+            if token_count < 2:
                 logging.warning(f"{__class__.__name__}.get_robot_response(): output token length too short : len(output) = {len(output)}")
                 continue
             
@@ -344,10 +421,10 @@ class Robot():
             #logging.info(f"{__class__.__name__}.get_robot_response(): After output processing = {output}")
 
             outputs.append(output)
+            logging.info(f"{__class__.__name__}.get_robot_response(): Clearing gpu memory")
+            # Clear memory
+            torch.cuda.empty_cache()
         
-        #print (f"get_robot_response(): Clearing gpu memory")
-        # Clear memory
-        torch.cuda.empty_cache()
 
         # Check if got any outputs after processing
         if len(outputs) == 0:
@@ -359,7 +436,11 @@ class Robot():
         for index in range(len(outputs)):
             total_tokens += len(outputs[index].split(" "))
         tokens_per_sec = total_tokens / runtime
-        logging.info(f"{__class__.__name__}.get_robot_response(): runtime = {runtime}, tokens_per_sec = {tokens_per_sec}")
+        self.stats["tokens_per_sec"] = (0.5 * self.stats["tokens_per_sec"]) + (0.5 * tokens_per_sec)
+        self.stats["response_times"].append(runtime)
+        logging.info(f"{__class__.__name__}.get_robot_response(): runtime = {runtime}")
+        logging.info(f"{__class__.__name__}.get_robot_response(): tokens_per_sec = {tokens_per_sec}")
+        logging.info(f"{__class__.__name__}.get_robot_response(): overall tokens_per_sec = {self.stats['tokens_per_sec']}")
         return outputs
     
 class _SentinelTokenStoppingCriteria(transformers.StoppingCriteria):

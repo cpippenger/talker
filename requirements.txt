@@ -22,8 +22,8 @@ wikipedia
 #accelerate
 
 # Text to speech
-#fairseq
-#speechbrain
+fairseq
+speechbrain
 
 
 # NLP

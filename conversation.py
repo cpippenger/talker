@@ -19,6 +19,8 @@ from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
 from comment import Comment
 
+logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
 
 def preprocess(sent):
     sent = nltk.word_tokenize(sent)
@@ -148,7 +150,7 @@ class Conversation():
                         comment:str,
                         response_length_modifier:int=0,
                         min_allowed_respose_len:int=2,
-                        response_count:int=1,
+                        response_count:int=3,
                         is_speak_response:bool=False
                        ):
         """
@@ -171,6 +173,10 @@ class Conversation():
         
         # Preprocess text
         comment = comment.replace("...", ".. . ")
+
+        # Save comment
+        user_comment = Comment(commentor, comment, self.sentiment.get_sentiment(comment))
+        #user_comment.save()
         
         # If there are any proper nouns in the text
         # search for a corresponding wiki page
@@ -204,8 +210,8 @@ class Conversation():
         logging.info("-"*100)
 
         # Randomize length of response
-        min_len = 32 + int(32 * random()) + response_length_modifier
-        max_len = 128 + int(1024 * random()) + response_length_modifier
+        min_len = 16 + int(32 * random()) + response_length_modifier
+        max_len = 128 + int(512 * random()) + response_length_modifier
         logging.info(f"{__class__.__name__}.{func_name}(): min_len = {min_len}, max_len = {max_len}")
         # Generate output from the robot given the prompt
         outputs = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len, response_count=response_count)
@@ -288,9 +294,12 @@ class ChatHistory():
         self.cache_filename = f"{personA}-{personB}_chat_history.p"
 
         if use_cache and os.path.isfile(self.cache_filename):
+            logging.error(f"{__class__.__name__}.__init__(): Failed to load chat history {self.cache_filename}")
             loaded = self.load()
             if not loaded:
                 logging.error(f"{Color.F_Red}{__class__.__name__}.__init__(): Failed to load chat history {self.cache_filename}{Color.F_White}")
+            else:
+                logging.error(f"{__class__.__name__}.__init__(): Loaded chat history for {self.personA} -> {self.personB}")
         else:
             # Init a fresh chat
             self.personA = personA
@@ -319,7 +328,7 @@ class ChatHistory():
       
     def add_comment(self, comment):
         self.dialogue.append(comment)
-        self.save()
+        #self.save()
     
     def reset(self):
         self.dialogue = []
