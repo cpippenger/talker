@@ -8,6 +8,7 @@ import logging
 #from accelerate import init_empty_weights
 import transformers
 from transformers import BitsAndBytesConfig
+from transformers import  GenerationConfig
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
 from numpy.random import random, choice
@@ -44,13 +45,16 @@ class Robot():
         self.context_token_limit = 2000
         self.persona = persona
         self.stopping_words = [
-                              "You:", 
+                              #"You: ", 
                               #f"{self.name}: ", 
-                              "<BOT>", "</BOT>",
-                              "START>",
-                              "Persona:"
-                              "Lilly",
-                              "Ashlee", "Malcom"
+                              "<BOT>", 
+                              "</BOT>",
+                              "<START>",
+                              "Persona:",
+                              "endoftext",
+                              "<|",
+                              #"Lilly",
+                              #"Ashlee", "Malcom"
                               #"\n\n", 
                               #"\n ",
                               ]
@@ -71,6 +75,7 @@ class Robot():
             "tokens_per_sec" : 0,
             "response_times" : []
         }
+        self.max_generation_time = 10
         self.init_models()
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
@@ -273,19 +278,37 @@ class Robot():
             # Init models
             self.init_models(self.model_file, self.model_name, self.finetune_path)
         
+        # Clear memory
+        logging.info(f"{__class__.__name__}.get_robot_response(): Clearing gpu memory")
+        torch.cuda.empty_cache()
+
         # Randomly prepend the output with the person's name
         #if random() > .85:
         #    prompt = prompt + f"Well {person} "
 
         # If prompt is longer than max allowed input size
         if len(prompt.split(" ")) > 1024:
-            logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Prompt too long: {len(prompt.split(' '))} {Color.F_White}")
+            logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Prompt too long: {len(prompt.split(' '))}. Truncating {Color.F_White}")
             prompt = prompt.split(" ")
             prompt = prompt[-1024:]
             prompt = " ".join(prompt)
 
         # Encode input strings
         tokenized_items = self.tokenizer(prompt, return_tensors="pt").to("cuda" if self.is_use_gpu else "cpu")
+        prompt_token_count = len(tokenized_items["input_ids"][0])
+
+        # Show input token length
+        logging.info(f"{__class__.__name__}.get_robot_response(): input token length = {tokenized_items['input_ids'].shape}")
+
+        # Check if the input is larger that the max allowed input
+        if tokenized_items['input_ids'].shape[0] > self.context_token_limit:
+            logging.warning(f"{__class__.__name__}.get_robot_response(): Context length too long. tokenized_items['input_ids'].shape[0] = {tokenized_items['input_ids'].shape[0]}")
+
+        # Check that the input and model are on the same device
+        if tokenized_items["input_ids"].get_device() != self.model.device.index:
+            logging.error(f"{Color.F_Red}{__class__.__name__}.get_robot_response(): input and model on difference devices{Color.F_White}")
+            logging.info(f"{__class__.__name__}.get_robot_response(): input device = {tokenized_items['input_ids'].get_device()}")
+            logging.info(f"{__class__.__name__}.get_robot_response(): model device = {self.model.device.index}")
 
         # If needs to generate more than one response
         if response_count > 1:
@@ -293,10 +316,10 @@ class Robot():
             for index in range(response_count-1):
                 # Append a copy of the input to itself
                 tokenized_items["input_ids"] = torch.cat((tokenized_items["input_ids"], tokenized_items["input_ids"].clone()), dim=0)
-                #tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
+                tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
 
         # Create stopping criteria for generation
-        stopping_words = self.stopping_words + [f"{person}: ", f"{person.upper()}: "]
+        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:"]
         stopping_list = []
         for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(
@@ -307,42 +330,73 @@ class Robot():
                 ).input_ids.to("cuda" if self.is_use_gpu else "cpu"),
                 starting_idx=tokenized_items.input_ids.shape[-1]))            
         stopping_criteria_list = StoppingCriteriaList(stopping_list)
+
+        # Show stopping words
+        logging.info(f"{__class__.__name__}.get_robot_response(): stopping_words = {stopping_words}")
         
-        # Show input token length
-        logging.info(f"{__class__.__name__}.get_robot_response(): input token length = {tokenized_items['input_ids'].shape}")
+        # Config genration
+        generation_config = GenerationConfig(
+                                             min_len=min_len+prompt_token_count,
+                                             max_len=max_len+prompt_token_count,
+                                             min_new_tokens=min_len, 
+                                             max_new_tokens=max_len, 
+                                             do_sample=True, 
+                                             top_k=50, # Default = 50
+                                             temperature=1.0, # Default = 1.0
+                                             #epsilon_cutoff=0.0004,
+                                             length_penalty=5.0, # Default = 1.0,
+                                             #num_return_sequences=4, # Default=1.0
+                                             #num_beams=4, # Default = 1.0
+                                             #num_beam_groups=2, # Default = 1.0
+                                             #diversity_penalty=5.0, # Default = 0.0,
+                                             #repetition_penalty=1.0, # Default = 1.0
+                                             #encoder_repetition_penalty=1.15, # Default 1.0
+                                             #bad_words_ids=self.tokenizer(stopping_words).input_ids,
+                                             #force_words_ids=self.tokenizer(person).input_ids,
+                                             eos_token_id=self.tokenizer.eos_token_id,
+                                             bos_token_id=self.tokenizer.bos_token_id,
+                                             pad_token_id=self.tokenizer.pad_token_id,
+                                             max_time=10,
+                                             
+        )
 
-        # Check if the input is larger that the max allowed input
-        if tokenized_items['input_ids'].shape[0] > self.context_token_limit:
-            logging.warning(f"{__class__.__name__}.get_robot_response(): Context length too long. tokenized_items['input_ids'].shape[0] = {tokenized_items['input_ids'].shape[0]}")
-
-        # Check that the input and model are on the same device
-        if tokenized_items["input_ids"].get_device() != self.model.device:
-            logging.error(f"{__class__.__name__}.get_robot_response(): input and model on difference devices")
-            logging.info(f"{__class__.__name__}.get_robot_response(): input device = {tokenized_items['input_ids'].get_device()}")
-            logging.info(f"{__class__.__name__}.get_robot_response(): model device = {self.model.device}")
-
+        logging.info(f"{__class__.__name__}.get_robot_response(): Generating output")
         # Generate output logits from model
         with torch.no_grad():
             logits = self.model.generate(
-                                        input_ids=tokenized_items["input_ids"],
+                                        **tokenized_items,
                                         stopping_criteria=stopping_criteria_list, 
-                                        min_length=min_len+len(prompt), 
-                                        max_length=max_len+len(prompt),
-                                        do_sample=True,
-                                        pad_token_id=self.tokenizer.eos_token_id
+                                        generation_config=generation_config,
                                         )
-        
+        # Show output logits shape
+        logging.info(f"{__class__.__name__}.get_robot_response(): {logits.shape = }")
+        #logging.info(f"{__class__.__name__}.get_robot_response(): {logits = }")
+
+        #stopping_tokens = self.tokenizer(self.stopping_words).input_ids
+        #for index in range(len(logits)):
+        #    for stopping_token in stopping_tokens:
+        #        if stopping_token in logits[index]:
+        #            logging.info(f"{__class__.__name__}.get_robot_response(): Encountered stopping word{self.tokenizer.decode(stopping_token)}")
+                    
+
+        # Decode outputs
+        unprocessed_outputs = self.tokenizer.batch_decode(logits, skip_special_tokens=False)
         # Save a list of all possible outputs generated
-        outputs = []
+        processed_outputs = []
         # For each output
-        for output_index in range(len(logits)):
+        for output_index in range(len(unprocessed_outputs)):
             # Decode output logits to words
-            output = self.tokenizer.decode(logits[output_index], skip_special_tokens=True)
+            #output = self.tokenizer.decode(logits[output_index], skip_special_tokens=True)
+            output = unprocessed_outputs[output_index]
             # Filter input
             output = output[len(prompt):]
+            # Show unprocessed output
+            logging.info(f"{__class__.__name__}.get_robot_response(): Unprocessed output = {output}")
             #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
             # Count tokens in output
             token_count = len(output.split(" "))
+            # Show count of tokens generated
+            logging.info(f"{__class__.__name__}.get_robot_response(): {token_count = }")
             # Check if made no tokens
             if token_count == 0:
                 logging.error(f"{__class__.__name__}.get_robot_response(): No output tokens generated")
@@ -355,8 +409,8 @@ class Robot():
             
             # Check if output is too long
             if token_count > 2000:
-                logging.warning(f"{__class__.__name__}.get_robot_response(): output token length too long : len(output) = {len(output)}")
-                logging.warning(f"{__class__.__name__}.get_robot_response(): truncating to 2000")
+                logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): output token length too long : len(output) = {len(output)}{Color.F_White}")
+                logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): truncating to 2000{Color.F_White}")
                 output = output[0:2000]
                 #continue
 
@@ -377,18 +431,20 @@ class Robot():
             run_count = 0
             max_run_count = 10
             # Use regex to match strings like *[TEXT]* 
-            match = re.search("(?<=\*)(.*?)(?=\*)", output)
-            while match and run_count < max_run_count:
-                run_count += 1
-                output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
-                match = re.search("(?<=\*)(.*?)(?=\*)", output)
-            run_count = 0
+            #match = re.search("(?<=\*)(.*?)(?=\*)", output)
+            #while match and run_count < max_run_count:
+            #    run_count += 1
+            #    #logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Removing [TEXT] from {match.start()-1} to {match.end()+1} {Color.F_White}")
+            #    output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
+            #    match = re.search("(?<=\*)(.*?)(?=\*)", output)
+            #run_count = 0
             # Use regex to match strings like [[TEXT]] 
-            match = re.search("(?<=\[)(.*?)(?=\])", output)
-            while match and run_count < max_run_count:
-                run_count += 1
-                output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
-                match = re.search("(?<=\*)(.*?)(?=\*)", output)
+            #match = re.search("(?<=\[)(.*?)(?=\])", output)
+            #while match and run_count < max_run_count:
+            #    run_count += 1
+            #    #logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Removing [TEXT] from {match.start()-1} to {match.end()+1} {output[match.start:match.end]} {Color.F_White}")
+            #    output = f"{output[0:match.start()-1]}{output[match.end()+1:]}"
+            #    match = re.search("(?<=\*)(.*?)(?=\*)", output)
                 
             # Strip whitepsace
             output = output.strip()
@@ -400,8 +456,8 @@ class Robot():
                 output = output.replace(f"Be {emotion}.", "")
                 
             if len(output) > max_len * 2:
-                logging.info(f"{__class__.__name__}.get_robot_response(): Output too large len(output) = {len(output)}")
-                output = output[0:max_len]
+                logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Output too large len(output) = {len(output)}{Color.F_White}")
+                #output = output[0:max_len]
                 
             # If bad word in 
             for index in range(len(self.filter_list)):
@@ -415,33 +471,40 @@ class Robot():
             
             output = output.replace("Hehe", "Haha")
             output = output.replace("hehe", "haha")
-            # Replace numbers with words
+            # Replace numbers with words for the speach-to-text
             output = re.sub(r"(\d+)", lambda x: num2words.num2words(int(x.group(0))), output)
             #output = output.replace(f"Well {person} Well Alec", "haha")
             #logging.info(f"{__class__.__name__}.get_robot_response(): After output processing = {output}")
 
-            outputs.append(output)
-            logging.info(f"{__class__.__name__}.get_robot_response(): Clearing gpu memory")
+            # Check if after processing there is nothing left
+            if len(output) == 0:
+                logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): No output after processing: {unprocessed_outputs[output_index]}")
+
+
+            # Save processing output
+            processed_outputs.append(output)
+
             # Clear memory
+            logging.info(f"{__class__.__name__}.get_robot_response(): Clearing gpu memory")
             torch.cuda.empty_cache()
         
 
         # Check if got any outputs after processing
-        if len(outputs) == 0:
+        if len(processed_outputs) == 0:
             logging.warning(f"{__class__.__name__}.get_robot_response(): Generated no valid outputs")
         
         #print (f"get_robot_response(): Done")
         runtime = time.time() - start_time
         total_tokens = 0
-        for index in range(len(outputs)):
-            total_tokens += len(outputs[index].split(" "))
+        for index in range(len(processed_outputs)):
+            total_tokens += len(processed_outputs[index].split(" "))
         tokens_per_sec = total_tokens / runtime
         self.stats["tokens_per_sec"] = (0.5 * self.stats["tokens_per_sec"]) + (0.5 * tokens_per_sec)
         self.stats["response_times"].append(runtime)
         logging.info(f"{__class__.__name__}.get_robot_response(): runtime = {runtime}")
         logging.info(f"{__class__.__name__}.get_robot_response(): tokens_per_sec = {tokens_per_sec}")
         logging.info(f"{__class__.__name__}.get_robot_response(): overall tokens_per_sec = {self.stats['tokens_per_sec']}")
-        return outputs
+        return processed_outputs
     
 class _SentinelTokenStoppingCriteria(transformers.StoppingCriteria):
 

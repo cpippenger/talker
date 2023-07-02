@@ -187,11 +187,6 @@ class Conversation():
             logging.info(f"{__class__.__name__}.{func_name}: Found proper nouns = {proper_nouns}")
             prompt_info = self.info.find_wiki_page(proper_nouns)
         
-        # Check for certain trigger words
-        # If asked for a long story
-        if "long story" in comment:
-            response_length_modifier = 1024
-        
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(comment)
         sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
@@ -210,9 +205,9 @@ class Conversation():
         logging.info("-"*100)
 
         # Randomize length of response
-        min_len = 16 + int(32 * random()) + response_length_modifier
-        max_len = 128 + int(512 * random()) + response_length_modifier
-        logging.info(f"{__class__.__name__}.{func_name}(): min_len = {min_len}, max_len = {max_len}")
+        min_len = 32 + int(32 * random()) + response_length_modifier
+        max_len = 128 + int(1024 * random()) + response_length_modifier
+
         # Generate output from the robot given the prompt
         outputs = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len, response_count=response_count)
 
@@ -234,7 +229,10 @@ class Conversation():
                 sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
                 comment = Comment(self.robot.name, output, sentiment)
                 output_scores[index] = sentiment_dict["positive_score"]
-                logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] : {round(sentiment_dict['positive_score'],2)} : {comment.printf()}")
+                logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] ")
+                logging.info(f"{__class__.__name__}.{func_name}(): \t {len(output) = }")
+                logging.info(f"{__class__.__name__}.{func_name}(): \t sentiment = {Color.F_Green}{int(100*round(sentiment_dict['positive_score'],2))} {Color.F_Red}{int(100*round(sentiment_dict['negative_score'],2))} {Color.F_White}")
+                logging.info(f"{__class__.__name__}.{func_name}(): \t {comment.printf()}")
             # Give the longest response a boost in score
             output_scores[longest_output_index] += 0.25
             # Get the top scoring index
@@ -281,7 +279,8 @@ class Conversation():
 
         runtime = time.time() - start_time
         tokens_per_sec = len(output.split(" ")) / runtime
-        logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}, tokens_per_sec = {tokens_per_sec}")
+        logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
+        logging.info(f"{__class__.__name__}.{func_name}(): tokens_per_sec = {tokens_per_sec}")
         return output, wav, rate
     
     
@@ -294,7 +293,7 @@ class ChatHistory():
         self.cache_filename = f"{personA}-{personB}_chat_history.p"
 
         if use_cache and os.path.isfile(self.cache_filename):
-            logging.error(f"{__class__.__name__}.__init__(): Failed to load chat history {self.cache_filename}")
+            logging.error(f"{__class__.__name__}.__init__(): Loading chat history from {self.cache_filename}")
             loaded = self.load()
             if not loaded:
                 logging.error(f"{Color.F_Red}{__class__.__name__}.__init__(): Failed to load chat history {self.cache_filename}{Color.F_White}")
