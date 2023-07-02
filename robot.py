@@ -46,13 +46,15 @@ class Robot():
         self.persona = persona
         self.stopping_words = [
                               #"You: ", 
-                              #f"{self.name}: ", 
+                              f"{self.name}: ", 
+                              f"{self.name[0]}: ", 
                               "<BOT>", 
                               "</BOT>",
                               "<START>",
                               "Persona:",
                               "endoftext",
                               "<|",
+                              #": ",
                               #"Lilly",
                               #"Ashlee", "Malcom"
                               #"\n\n", 
@@ -319,7 +321,7 @@ class Robot():
                 tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
 
         # Create stopping criteria for generation
-        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:"]
+        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:", f"{person[0]}:"]
         stopping_list = []
         for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(
@@ -339,12 +341,12 @@ class Robot():
                                              min_len=min_len+prompt_token_count,
                                              max_len=max_len+prompt_token_count,
                                              min_new_tokens=min_len, 
-                                             max_new_tokens=max_len, 
+                                             max_new_tokens=max_len+100, 
                                              do_sample=True, 
-                                             top_k=50, # Default = 50
+                                             top_k=10, # Default = 50
                                              temperature=1.0, # Default = 1.0
                                              #epsilon_cutoff=0.0004,
-                                             length_penalty=5.0, # Default = 1.0,
+                                             #length_penalty=5.0, # Default = 1.0,
                                              #num_return_sequences=4, # Default=1.0
                                              #num_beams=4, # Default = 1.0
                                              #num_beam_groups=2, # Default = 1.0
@@ -356,7 +358,7 @@ class Robot():
                                              eos_token_id=self.tokenizer.eos_token_id,
                                              bos_token_id=self.tokenizer.bos_token_id,
                                              pad_token_id=self.tokenizer.pad_token_id,
-                                             max_time=10,
+                                             max_time=7,
                                              
         )
 
@@ -365,7 +367,7 @@ class Robot():
         with torch.no_grad():
             logits = self.model.generate(
                                         **tokenized_items,
-                                        stopping_criteria=stopping_criteria_list, 
+                                        #stopping_criteria=stopping_criteria_list, 
                                         generation_config=generation_config,
                                         )
         # Show output logits shape
@@ -392,6 +394,8 @@ class Robot():
             output = output[len(prompt):]
             # Show unprocessed output
             logging.info(f"{__class__.__name__}.get_robot_response(): Unprocessed output = {output}")
+            # Filter own name prompts
+            output = output.replace("lly:", "")
             #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
             # Count tokens in output
             token_count = len(output.split(" "))
@@ -415,9 +419,10 @@ class Robot():
                 #continue
 
             #print (f"get_robot_response(): Processing output")
-            #for stop_word in stopping_words:
-            #    if stop_word in output:
-            #        output = output[0:output.index(stop_word)]
+            for stop_word in stopping_words:
+                if stop_word in output:
+                    logging.warning(f"{Color.F_Yellow}{__class__.__name__}.get_robot_response(): Foudn stopping word = {stop_word} {Color.F_White}")
+                    output = output[0:output.index(stop_word)]
             
             # Remove whitespace
             output = output.rstrip()

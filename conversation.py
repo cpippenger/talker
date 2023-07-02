@@ -228,7 +228,8 @@ class Conversation():
                 sentiment_dict = self.sentiment.get_sentiment(output)
                 sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
                 comment = Comment(self.robot.name, output, sentiment)
-                output_scores[index] = sentiment_dict["positive_score"]
+                score = sentiment_dict["positive_score"]
+                output_scores[index] = score
                 logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] ")
                 logging.info(f"{__class__.__name__}.{func_name}(): \t {len(output) = }")
                 logging.info(f"{__class__.__name__}.{func_name}(): \t sentiment = {Color.F_Green}{int(100*round(sentiment_dict['positive_score'],2))} {Color.F_Red}{int(100*round(sentiment_dict['negative_score'],2))} {Color.F_White}")
