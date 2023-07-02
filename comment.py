@@ -1,13 +1,20 @@
 from color import Color
 from sentiment import SentimentScore
 from datetime import datetime
+from DatabaseFactory import DatabaseFactory
+from uuid import uuid4
 
-class Comment():
-    def __init__(self, commentor:str, comment:str, sentiment:SentimentScore):
+class Comment(DatabaseFactory):
+    def __init__(self, commentor:str, comment:str, sentiment:SentimentScore,useDatabase:bool=True):
+        self.id = str(uuid4())
         self.time = datetime.now()
         self.commentor = commentor
         self.comment = comment
         self.sentiment = sentiment
+        self._isDatabase=useDatabase
+        if (useDatabase):
+            super().__init__(debug=True)
+            
 
     def __repr__(self) -> str:
         return f"{self.commentor}: {self.comment}"

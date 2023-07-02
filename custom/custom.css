@@ -48,7 +48,9 @@ input.raw_input {
     margin-left: 1000px;
 }
 
-
+div.prompt {
+    min-width: 0 !important;
+}
 
 
 
