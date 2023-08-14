@@ -1,8 +1,8 @@
 import re
 import time
 import json
-import num2words
 import torch
+import num2words
 import pickle
 import logging
 #from accelerate import init_empty_weights
@@ -27,6 +27,10 @@ from color import Color
 # to it's comment. It will then analyze the sentiment
 # of the response to see if it expects the user to 
 # response positively
+
+# TODO: Add completion model that can talk partial 
+# output from the dialogue model and complete the
+# sentence.
 
 
 class Robot():
