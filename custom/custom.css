@@ -15,6 +15,35 @@ div#notebook, div.CodeMirror, div.output_area pre, div.output_wrapper, div.promp
 }
 */
 
+/* 
+
+	Table of Contents
+
+*/
+
+#toc-wrapper {
+    background-color: #000000;
+}
+
+#toc-wrapper .toc-item-num {
+    color: #ffffff;
+}
+
+#toc li > span:hover {
+    background-color: #000000;
+}
+
+#toc a, #navigate_menu a, .toc {
+    color: #333333;
+    background: black;
+}
+
+/* 
+
+	/Table of Contents
+
+*/
+
 
 .notification_widget, .notification_widget.info {
     margin-left: 800px;

@@ -1,6 +1,6 @@
-from psycopg import connect,OperationalError
 import json
-
+import logging
+from psycopg import connect,OperationalError
 class DatabaseFactory:
     def __init__(self,debug=False):
         self._debug=debug
@@ -11,20 +11,18 @@ class DatabaseFactory:
         print ("\nDataFactory ERROR:", err)
         return None
     
-    def _query(self,sqlquery:str,sqldata:list)->dict:
-        if(self._debug):
-            print("Running Query:",sqlquery)
-            print("Values:",sqldata)
-        data={}
+    def _query(self, sqlquery:str, sqldata:list) -> dict:
+        logging.info(f"{__class__.__name__}._query(): {sqlquery=}, {sqldata=}}")
+        data = {}
         try:
             cursor = self._conn.cursor()
-            cursor.execute(sqlquery,sqldata)
+            cursor.execute(sqlquery, sqldata)
             self._conn.commit()
             if "update" or "insert" not in sqlquery: # just for getting 1 object
-                rowdata=cursor.fetchone()
-                i=0
+                rowdata = cursor.fetchone()
+                i = 0
                 for desc in cursor.description:
-                    data[desc[0]]=rowdata[i] # better way?
+                    data[desc[0]] = rowdata[i] # better way?
                     i=i+1
             else: 
                 cursor.fetchone()

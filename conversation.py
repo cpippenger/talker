@@ -17,7 +17,8 @@ from info import Info
 from color import Color
 from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
-from comment import Comment
+from models.comment import Comment
+from controllers.database_controller import DataBaseController
 
 logging.basicConfig(level=logging.INFO)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
@@ -48,6 +49,7 @@ class Conversation():
         self.max_memory_insert_size = 3
         self.sentiment = Sentiment()
         self.is_debug = is_debug
+        self.dbc = DataBaseController()
         
     def __repr__(self):
         out_str =  f"Converstaion():\n"
@@ -176,6 +178,8 @@ class Conversation():
 
         # Save comment
         user_comment = Comment(commentor, comment, self.sentiment.get_sentiment(comment))
+
+        self.dbc.save_comment(user_comment)
         #user_comment.save()
         
         # If there are any proper nouns in the text
@@ -228,7 +232,8 @@ class Conversation():
                 sentiment_dict = self.sentiment.get_sentiment(output)
                 sentiment = SentimentScore(sentiment_dict["sentiment"], sentiment_dict["positive_score"], sentiment_dict["neutral_score"], sentiment_dict["negative_score"])
                 comment = Comment(self.robot.name, output, sentiment)
-                output_scores[index] = sentiment_dict["positive_score"]
+                score = sentiment_dict["positive_score"]
+                output_scores[index] = score
                 logging.info(f"{__class__.__name__}.{func_name}(): output[{index}] ")
                 logging.info(f"{__class__.__name__}.{func_name}(): \t {len(output) = }")
                 logging.info(f"{__class__.__name__}.{func_name}(): \t sentiment = {Color.F_Green}{int(100*round(sentiment_dict['positive_score'],2))} {Color.F_Red}{int(100*round(sentiment_dict['negative_score'],2))} {Color.F_White}")
