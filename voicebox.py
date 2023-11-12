@@ -12,6 +12,9 @@ from TTS.utils.manage import ModelManager
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.api import TTS
 from datasets import load_dataset
+from pydub import AudioSegment
+import numpy as np   
+import soundfile as sf
 
 logging.basicConfig(
      #filename='DockProc.log',
@@ -204,7 +207,14 @@ class VoiceBox():
                 #repetition_penalty=.75
             )
 
-            return outputs["wav"], 24000
+            wav = outputs["wav"]
+    
+            sf.write("cache/test.wav", wav, 24000)
+            sound = AudioSegment.from_file("cache/test.wav", format = "wav")
+            sound = sound.strip_silence(silence_len=250, silence_thresh=-50, padding=100)
+            wav = np.array(sound.get_array_of_samples())
+
+            return wav, 24000
         
         # IF using Tacotron model
         elif self.model_name == "hf-tacotron2":
@@ -305,19 +315,25 @@ class VoiceBox():
                     self.logger.debug(f"{__class__.__name__}.read_text(): Calling self.tts")
                     wav, sample_rate = self.tts(sentence)
                     self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
+                    self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) =}")
+                    self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape =}")
                     
                     wavs.append(wav)
                 except Exception as ex:
                     logging.error(f"{__class__.__name__}.read_text(): Failed to read text = {sentence = } ")
                     logging.error(f"{__class__.__name__}.read_text(): {ex = } ")
 
-            self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) }")
+            self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) =}")
+            self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape =}")
+            self.logger.debug(f"{__class__.__name__}.read_text(): {type(wavs) = }")
+            self.logger.debug(f"{__class__.__name__}.read_text(): {type(wavs[0]) = }")
+            #self.logger.debug(f"{__class__.__name__}.read_text(): {wavs.shape = }")
+
             # Stack the wavs into a single wav
             # TODO: Add slight break between clips
             if (isinstance(wav, np.ndarray)):
                 self.logger.debug(f"{__class__.__name__}.read_text(): Output is a numpy array {wav.shape }")
-                self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape }")
-                wav = np.stack(wavs)
+                wav = np.stack(np.array(wavs))
             elif (isinstance(wav, torch.Tensor)):
                 wav = torch.hstack(wavs)
         
