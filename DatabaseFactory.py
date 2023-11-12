@@ -37,7 +37,7 @@ class DatabaseFactory:
     # existing data it will save any varible in the child object that 
     # doesnt have an underscore in the name
     def save(self)->bool:
-        savedata=self._getdata() 
+        savedata = self._getdata() 
         self._query(self._sqlstatement("insert",savedata),list(savedata.values()))
         return True
 

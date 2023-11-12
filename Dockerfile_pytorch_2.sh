@@ -135,8 +135,8 @@ RUN pip install --upgrade --no-deps --force-reinstall -U git+https://github.com/
 RUN pip install  --upgrade --no-deps --force-reinstall -U git+https://github.com/huggingface/peft.git 
 RUN pip install  --upgrade --no-deps --force-reinstall -U git+https://github.com/huggingface/accelerate.git
 
-RUN pip install jupyter_contrib_nbextensions
-RUN jupyter contrib nbextension install --sys-prefix
+#RUN pip install jupyter_contrib_nbextensions
+#RUN jupyter contrib nbextension install --sys-prefix
 
 # Set up aws
 # Source: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html

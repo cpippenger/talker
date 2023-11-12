@@ -1,13 +1,18 @@
 # Basic
 #cffi
 pandas
-jupyter 
+ipython==8.12.0
+jupyter
 scipy 
 matplotlib 
 #cloudpickle==1.3.0
 #pyglet==1.5.0
 #lmdb
 num2words
+
+# Geo
+geopandas
+geodatasets
 
 # External data
 googlesearch-python
