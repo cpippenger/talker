@@ -18,7 +18,7 @@ from color import Color
 from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
 from models.comment import Comment
-from controllers.database_controller import DataBaseController
+#from controllers.database_controller import DataBaseController
 
 logging.basicConfig(level=logging.INFO)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
@@ -49,7 +49,7 @@ class Conversation():
         self.max_memory_insert_size = 3
         self.sentiment = Sentiment()
         self.is_debug = is_debug
-        self.dbc = DataBaseController()
+        #self.dbc = DataBaseController()
         
     def __repr__(self):
         out_str =  f"Converstaion():\n"
@@ -165,7 +165,7 @@ class Conversation():
         comment : string - The comment from the 
         """
         func_name = "process_comment"
-        logging.info(f"{__class__.__name__}.{func_name}({commentor}, {comment})")
+        logging.info(f"{__class__.__name__}.{func_name}({commentor = }, {comment = }, {is_speak_response = })")
         start_time = time.time()
         if not self.human_exists(commentor):
             self.add_human(Human(commentor))        
@@ -179,7 +179,7 @@ class Conversation():
         # Save comment
         user_comment = Comment(commentor, comment, self.sentiment.get_sentiment(comment))
 
-        self.dbc.save_comment(user_comment)
+        #self.dbc.save_comment(user_comment)
         #user_comment.save()
         
         # If there are any proper nouns in the text
@@ -242,17 +242,18 @@ class Conversation():
             output_scores[longest_output_index] += 0.25
             # Get the top scoring index
             top_index = np.argmax(output_scores)
-            logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
+            #logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
             # Pick the response to use
             output = outputs[top_index]
 
         # Text to speech output 
-        #wav, rate = self.robot.read_response(output)
         wav, rate = None, None
         
         # If should speak response
-        #if is_speak_response:
-        #    IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
+        if is_speak_response:
+            logging.info(f"{__class__.__name__}.{func_name}(): Reading response")
+            wav, rate, wavs = self.robot.voice.read_text(output)
+            #IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(output)
@@ -286,6 +287,9 @@ class Conversation():
         tokens_per_sec = len(output.split(" ")) / runtime
         logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
         logging.info(f"{__class__.__name__}.{func_name}(): tokens_per_sec = {tokens_per_sec}")
+
+
+
         return output, wav, rate
     
     

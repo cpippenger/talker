@@ -22,6 +22,8 @@ from nltk.tokenize import sent_tokenize
 
 from color import Color
 
+from voicebox import VoiceBox
+
 # TODO: Implement a lookahead on text generation
 # so that the bot will generate an expected response
 # to it's comment. It will then analyze the sentiment
@@ -83,6 +85,22 @@ class Robot():
         }
         self.max_generation_time = 10
         self.init_models()
+        synth_params = {
+                #"gpt_cond_len" : 4096,
+                "top_k" : 64, # Default 50
+                "top_p" : 0.85, # Default 0.85
+                "decoder_iterations" : 10,
+                "temperature" : 0.2, # Default 0.85
+                "length_penalty" : 1.0, # Default 1.0
+                "repetition_penalty" : 1.8, # Default 2.0
+                "cond_free_k" : 2.0, # Default 2.0
+                "diffusion_temperature" : 1.0, # Default 1.0    
+            }
+        self.voice = VoiceBox(
+                    config_filename="../voicebox_config.json", 
+                    speaker_wav="../data/gits_3.wav", 
+                    synth_params=synth_params
+        )
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
     def to_dict(self):
@@ -183,67 +201,9 @@ class Robot():
                 self.model.to("cuda")
         logging.info(f"{__class__.__name__}.{__name__}(): Done")
 
-        # Init text to speach model
-        self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
-        self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
-        
         return True
     
-    def read_response(self, text:str, rate_modifier=None, is_say=False):
-        """
-        Convert text to speech
-        """
-        start_time = time.time()
-        #logging.info(f"{__class__.__name__}.{__name__}(text={text}, rate_modifier={rate_modifier}, is_say={is_say})")
-        wav = None
-        # If text is long        
-        if len(text) > 120:
-            #text_split = text.split(".") 
-            text_split = sent_tokenize(text)
-            wavs = []
 
-            for sentence in text_split:
-                #print (f"Reading {sentence}")
-                sentence = sentence.strip()
-                #wav, rate = robot.read_response(sentence.strip())
-                if len(sentence) < 2:
-                    #print ("Skipping")
-                    continue
-                try:
-                    # Running the TTS
-                    mel_output, mel_length, alignment = self.tacotron2.encode_text(sentence)
-                    # Running Vocoder (spectrogram-to-waveform)
-                    wav = self.hifi_gan.decode_batch(mel_output)
-                    wav = wav.squeeze(1)
-                    wavs.append(wav)
-                except:
-                    print (f"Failed to read text = {sentence}")
-
-            wav = torch.hstack(wavs)
-        
-        else:
-            try:
-                # Running the TTS
-                mel_output, mel_length, alignment = self.tacotron2.encode_text(text)
-
-                # Running Vocoder (spectrogram-to-waveform)
-                wav = self.hifi_gan.decode_batch(mel_output)
-                wav = wav.squeeze(1)
-            except:
-                logging.error(f"{Color.F_Red}{__class__.__name__}.read_response(): Failed to read text = {text}{Color.F_White}")
-            
-        rate = 22050 * 1.07
-        
-        if rate_modifier:
-            rate = rate * rate_modifier
-        runtime = time.time() - start_time
-        logging.info(f"{__class__.__name__}.read_response(): runtime = {runtime}")
-        return wav, rate
-        
-
-    #def post_process_output(self, output):
-
-    
     def get_robot_response(self,
                            person:str,
                            prompt:str,

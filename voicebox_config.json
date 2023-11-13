@@ -5,17 +5,32 @@
         "name" : "xtts_v1.1",
         "source" : "https://huggingface.co/xtts_v1.1",
         "api" : "https://github.com/coqui-ai/TTS/blob/dev/TTS/tts/models/xtts.py", 
-        "device" : "cpu",
+        "device" : "cuda",
         "is_quantize" : false,
         "is_deepspeed" : false
     },
     "vocoder" : {
-        "speaker_wav" : "data/trey.wav"
+        "speaker_wav" : "data/trey.wav",
+        "speed_up" : 1.0,
+        "apply_dynamic_compression" : true,
+        "apply_low_pass" : true,
+        "low_pass_cutoff" : 4000,
+        "high_pass_cutoff" : 200,
+        "apply_high_pass" : true,
+        "threshold" : -20, 
+        "ratio" : 4.0, 
+        "attack" : 5.0, 
+        "release" : 100.0
     },
-    "parameters" : {
+    "synth_params" : {
         "gpt_conf_len" : 3,
         "top_k" : 3,
         "top_p" : 5,
         "decoder_iterations" : 10
+    },
+    "silence_filter_params" : {
+        "silence_len" : 250,
+        "silence_thresh" : -50,
+        "padding" : 100
     }
 }

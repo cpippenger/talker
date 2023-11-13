@@ -40,6 +40,8 @@ class VoiceBox():
                 config_filename:str="voicebox_config.json", 
                 model_name:str=None,
                 speaker_wav:str=None,
+                synth_params:dict=None,
+                silence_filter_params:dict=None,
                 pre_init:bool=True,
                 is_persist:bool=True
                 ):
@@ -66,13 +68,27 @@ class VoiceBox():
         # Model name
         if model_name:
             self.model_name = model_name
+            self.config["model"]["name"] = synth_params
         else:
             self.model_name = self.config["model"]["name"]
         # Speaker definition
         if speaker_wav:
             self.speaker_wav = speaker_wav
+            self.config["vocoder"]["speaker_wav"] = synth_params
         else:
             self.speaker_wav = self.config["vocoder"]["speaker_wav"]
+        # Synthesizer params
+        if synth_params:
+            self.synth_params = synth_params
+            self.config["synth_params"] = synth_params
+        else:
+            self.synth_params = self.config["synth_params"]
+        # Silence filter params
+        if silence_filter_params:
+            self.silence_filter_params = silence_filter_params
+            self.config["silence_filter_params"] = silence_filter_params
+        else:
+            self.silence_filter_params = self.config["silence_filter_params"]       
 
         # Save model variable
         #self.tacotron2 = None
@@ -84,7 +100,6 @@ class VoiceBox():
 
         self.start_time = time()        
         self.is_persist = is_persist
-
 
         self.logger.debug(f"{__class__.__name__}.init(): Complete at {self.start_time}")
 
@@ -143,6 +158,7 @@ class VoiceBox():
             )
             # If is using the gpu
             if self.config["model"]["device"] == "cuda":
+                self.logger.debug(f"{__class__.__name__}.init_model(): Sending model to gpu")
                 self.model.cuda()
 
         # If using Tacotron model
@@ -194,26 +210,60 @@ class VoiceBox():
         if self.model_name == "xtts_v1.1":
             
             self.logger.debug(f"{__class__.__name__}.tts(): Using xtts model with")
-            self.logger.debug(f"{__class__.__name__}.tts(): params = {self.config['parameters']} ")
+            self.logger.debug(f"{__class__.__name__}.tts(): params = {self.config['synth_params']} ")
             outputs = self.model.synthesize(
                 text,
                 self.model_config,
                 language="en",
                 speaker_wav=self.speaker_wav,
-                top_k=self.config["parameters"]["top_k"],
-                top_p=self.config["parameters"]["top_p"],
-                gpt_cond_len=self.config["parameters"]["gpt_conf_len"],
-                decoder_iterations=self.config["parameters"]["decoder_iterations"],
-                #repetition_penalty=.75
+                **self.synth_params
             )
 
             wav = outputs["wav"]
-    
-            sf.write("cache/test.wav", wav, 24000)
-            sound = AudioSegment.from_file("cache/test.wav", format = "wav")
-            sound = sound.strip_silence(silence_len=250, silence_thresh=-50, padding=100)
-            wav = np.array(sound.get_array_of_samples())
+            
+            if len(wav) > 24000 * 2:
+                self.logger.debug(f"{__class__.__name__}.tts(): Applying post processing")
+                sf.write("cache/test.wav", wav, 24000)
+                sound = AudioSegment.from_file("cache/test.wav", format = "wav")
 
+                self.logger.debug(f"{__class__.__name__}.tts(): Striping silence")
+                sound = sound.strip_silence(**self.silence_filter_params)
+                if self.config["vocoder"]["speed_up"] != 1.0:
+                    self.logger.debug(f"{__class__.__name__}.tts(): Applying speed up")
+                    sound = sound.speedup(self.config["vocoder"]["speed_up"], 150, 25)
+                if self.config["vocoder"]["apply_dynamic_compression"]:
+                    self.logger.debug(f"{__class__.__name__}.tts(): Applying dynamic range compression")
+                    # TODO: Move param to config
+                    sound = sound.compress_dynamic_range(
+                                threshold = -20, # Default -20
+                                ratio = 4.0, # Default 4.0
+                                attack = 5.0, # Default 5.0
+                                release = 50.0, # Default 50.0
+                    )
+                if self.config["vocoder"]["apply_low_pass"]:
+                    self.logger.debug(f"{__class__.__name__}.tts(): Applying low pass filter")
+                    try:
+                        sound = sound.low_pass_filter(
+                                    cutoff = 10000, # Default -20
+                        )
+                    except IndexError:
+                        self.logger.error("low_pass_filter failed")
+                
+                if self.config["vocoder"]["apply_high_pass"]:
+                    self.logger.debug(f"{__class__.__name__}.tts(): Applying high pass filter")
+                    try:
+                        sound = sound.high_pass_filter(
+                                    cutoff = 100, # Default -20
+                        )
+                    except IndexError:
+                        self.logger.error("{__class__.__name__}.tts(): high_pass_filter failed")
+
+                #so = sound.speedup(self.config["vocoder"]["speed_up"], 1.5, 150)
+                wav = np.array(sound.get_array_of_samples())
+
+            else:
+                self.logger.debug(f"{__class__.__name__}.tts(): Skip post processing on short audio clip {len(wav) = }")
+                
             return wav, 24000
         
         # IF using Tacotron model
@@ -266,7 +316,8 @@ class VoiceBox():
 
     def read_text(
             self, 
-            text:str
+            text:str,
+            concat_delay:int=12500
         ):
         """
         Given a block of text use the tts model to convert to audio. Chunk the text file if necessary.
@@ -284,6 +335,7 @@ class VoiceBox():
         start_time = time()
         #logging.info(f"{__class__.__name__}.{__name__}(text={text}, rate_modifier={rate_modifier}, is_say={is_say})")
         wav = None
+        wavs = None
         sample_rate = None
         # If text is long        
         if len(text) > 120:
@@ -302,7 +354,8 @@ class VoiceBox():
             # Save each sentence wav
             wavs = []
             # For each sentence
-            for sentence in text_split:
+            for sentence_index in range(len(text_split)):
+                sentence = text_split[sentence_index]
                 self.logger.debug(f"{__class__.__name__}.read_text(): Reading {sentence =}")
                 sentence = sentence.strip()
                 #wav, rate = robot.read_response(sentence.strip())
@@ -310,18 +363,22 @@ class VoiceBox():
                     self.logger.debug(f"Skipping short text {len(sentence) = }")
                     #print ("Skipping")
                     continue
-                try:
+                #try:
                     
-                    self.logger.debug(f"{__class__.__name__}.read_text(): Calling self.tts")
-                    wav, sample_rate = self.tts(sentence)
-                    self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
-                    self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) =}")
-                    self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape =}")
+                self.logger.debug(f"{__class__.__name__}.read_text(): Calling self.tts")
+                wav, sample_rate = self.tts(sentence)
+                self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
+                self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) =}")
+                self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape =}")
+                
+                wavs.append(wav)
+
+                if sentence_index < len(text_split) - 1:
+                    wavs.append(np.zeros(concat_delay))
                     
-                    wavs.append(wav)
-                except Exception as ex:
-                    logging.error(f"{__class__.__name__}.read_text(): Failed to read text = {sentence = } ")
-                    logging.error(f"{__class__.__name__}.read_text(): {ex = } ")
+                #except Exception as ex:
+                #    logging.error(f"{__class__.__name__}.read_text(): Failed to read text = {sentence = } ")
+                #    logging.error(f"{__class__.__name__}.read_text(): {ex = } ")
 
             self.logger.debug(f"{__class__.__name__}.read_text(): {type(wav) =}")
             self.logger.debug(f"{__class__.__name__}.read_text(): {wav.shape =}")
@@ -333,7 +390,7 @@ class VoiceBox():
             # TODO: Add slight break between clips
             if (isinstance(wav, np.ndarray)):
                 self.logger.debug(f"{__class__.__name__}.read_text(): Output is a numpy array {wav.shape }")
-                wav = np.stack(np.array(wavs))
+                wav = np.hstack(wavs)
             elif (isinstance(wav, torch.Tensor)):
                 wav = torch.hstack(wavs)
         
@@ -347,13 +404,13 @@ class VoiceBox():
             #    logging.error(f"{Color.F_Red}{__class__.__name__}.read_text(): Failed to read text = {text}{Color.F_White}")
 
         # If ran on gpu
-        if "cuda" in self.config["model"]["device"]:
-            # Send array back to cpu before returning
-            wav = wav.cpu()
+        #if "cuda" in self.config["model"]["device"]:
+        #    # Send array back to cpu before returning
+        #    wav = wav.cpu()
 
         runtime = time() - start_time
         self.logger.debug(f"{__class__.__name__}.read_text(): runtime = {runtime}")
-        return wav, sample_rate
+        return wav, sample_rate, wavs
 
 
 
