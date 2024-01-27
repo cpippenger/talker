@@ -7,11 +7,11 @@
         "api" : "https://github.com/coqui-ai/TTS/blob/dev/TTS/tts/models/xtts.py", 
         "device" : "cuda",
         "is_quantize" : false,
-        "is_deepspeed" : false
+        "is_deepspeed" : true
     },
     "vocoder" : {
-        "speaker_wav" : "data/trey.wav",
-        "speed_up" : 1.0,
+        "speaker_wav" : "data/gits_3.wav",
+        "speed_up" : 1.27,
         "apply_dynamic_compression" : true,
         "apply_low_pass" : true,
         "low_pass_cutoff" : 4000,
@@ -23,10 +23,19 @@
         "release" : 100.0
     },
     "synth_params" : {
-        "gpt_conf_len" : 3,
-        "top_k" : 3,
-        "top_p" : 5,
-        "decoder_iterations" : 10
+        "gpt_cond_len" : 2,
+        "top_k" : 5, 
+        "top_p" : 0.9, 
+        "temperature" : 0.000000001,
+        "length_penalty" : -2.5, 
+        "repetition_penalty" : 1.8
+    },
+    "disabled_synth_params" : {
+        "decoder_iterations" : 5,
+        "length_penalty" : 1.0, 
+        "repetition_penalty" : 2.5,
+        "cond_free_k" : 2.0,
+        "diffusion_temperature" : 1.0  
     },
     "silence_filter_params" : {
         "silence_len" : 250,

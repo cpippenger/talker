@@ -22,7 +22,7 @@ from nltk.tokenize import sent_tokenize
 
 from color import Color
 
-from voicebox import VoiceBox
+from tts.voicebox import VoiceBox
 
 # TODO: Implement a lookahead on text generation
 # so that the bot will generate an expected response
@@ -322,7 +322,7 @@ class Robot():
                                              eos_token_id=self.tokenizer.eos_token_id,
                                              bos_token_id=self.tokenizer.bos_token_id,
                                              pad_token_id=self.tokenizer.pad_token_id,
-                                             max_time=7,
+                                             max_time=12,
                                              
         )
 

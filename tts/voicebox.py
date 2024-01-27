@@ -84,23 +84,23 @@ class VoiceBox():
             self.silence_filter_params = self.config["silence_filter_params"]       
 
         # Load pre-baked sounds
-        click_on = AudioSegment.from_file("data/click_on.wav", format = "wav")
-        click_off = AudioSegment.from_file("data/click_off.wav", format = "wav")
-        # Convert to numpy arrays
-        click_on = np.array(click_on.get_array_of_samples())
-        click_off = np.array(click_off.get_array_of_samples())
-        # Normalize to 0-1
-        click_on = self.normalize_min_max(click_on)
-        click_off = self.normalize_min_max(click_off)
-        # Reduce volume
-        click_on = click_on * 0.15
-        click_off = click_off * 0.15
-        # Chop off artifact that somewhere above
-        self.click_off = click_off[100:] # This doesn't take any effect, btw
-        self.click_on = click_on[100:] # This doesn't take any effect, btw
-        # Save sounds to use later
-        self.click_off = click_off
-        self.click_on = click_on
+        #click_on = AudioSegment.from_file("data/click_on.wav", format = "wav")
+        #click_off = AudioSegment.from_file("data/click_off.wav", format = "wav")
+        ## Convert to numpy arrays
+        #click_on = np.array(click_on.get_array_of_samples())
+        #click_off = np.array(click_off.get_array_of_samples())
+        ## Normalize to 0-1
+        #click_on = self.normalize_min_max(click_on)
+        #click_off = self.normalize_min_max(click_off)
+        ## Reduce volume
+        #click_on = click_on * 0.15
+        #click_off = click_off * 0.15
+        ## Chop off artifact that somewhere above
+        #self.click_off = click_off[100:] # This doesn't take any effect, btw
+        #self.click_on = click_on[100:] # This doesn't take any effect, btw
+        ## Save sounds to use later
+        #self.click_off = click_off
+        #self.click_on = click_on
 
         # Save model variable
         #self.tacotron2 = None
@@ -395,11 +395,11 @@ class VoiceBox():
                 self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
 
                 # If should add a start click
-                if is_add_start_click and sentence_index == 0:
-                    # Concat the click sound with some adjustable padding
-                    wav = np.concatenate((np.zeros(1000), self.click_on[100:len(self.click_off)-125], np.zeros(1500), wav))
-                    # Chop off an artifact that is created during concatenation.
-                    wav = wav[100:]
+                #if is_add_start_click and sentence_index == 0:
+                #    # Concat the click sound with some adjustable padding
+                #    wav = np.concatenate((np.zeros(1000), self.click_on[100:len(self.click_off)-125], np.zeros(1500), wav))
+                #    # Chop off an artifact that is created during concatenation.
+                #    wav = wav[100:]
 
                 # Save wav
                 wavs.append(wav)
@@ -418,29 +418,12 @@ class VoiceBox():
             elif (isinstance(wav, torch.Tensor)):
                 wav = torch.hstack(wavs)
 
-            # If should add end click sound
-            if is_add_end_click:
-                # Concat the click sound with some adjustable padding
-                wav = np.concatenate((wav, self.click_off[100:len(self.click_off)-125], np.zeros(2500)))
-                # Chop off an artifact that is created during concatenation.
-                wav = wav[100:]
 
         else:
             self.logger.debug(f"{__class__.__name__}.read_text(): Running full text {text}")
             #try:
             wav, sample_rate = self.tts(text)
             self.logger.debug(f"{__class__.__name__}.read_text(): Got model response: {len(wav) = }")
-
-            if is_add_start_click:
-                wav = np.concatenate((np.zeros(1000), self.click_on[100:len(self.click_off)-125], np.zeros(1500), wav))
-                wav = wav[100:] # Remove artifacts from concat
-
-            # If should add end click sound
-            if is_add_end_click:
-                # Concat the click sound with some adjustable padding
-                wav = np.concatenate((wav, self.click_off[100:len(self.click_off)-125], np.zeros(2500)))
-                # Chop off an artifact that is created during concatenation.
-                wav = wav[100:]
 
         
         #wav = wav.squeeze(1)
