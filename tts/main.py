@@ -81,13 +81,9 @@ class Message(BaseModel):
 
 # Audio samples used by TTS
 audio_samples = [
-    "data/beth_21.wav",
-    "data/beth_24.wav",
-    "data/beth_31.wav",
-    "data/beth_29.wav",
-    "data/beth_18.wav",
-    "data/beth_19.wav",
-    "data/beth_20.wav",
+    "data/gits_3.wav",
+    "data/gits_2.wav",
+    "data/gits.wav"
 ]
 
 
@@ -184,20 +180,22 @@ def push_to_queue(
     
     # Prepare redis message
     json_wav = wav.astype(float).tolist() 
-    redis_msg = json.dumps({
-        "data": json_wav, 
-        "rate": rate, 
-        "text": text, 
-        "priority": priority, 
-        "request_time": (str(time.time()) if (type(request_time) is not str) else request_time),
-        "response_time": str(time.time()),
-        "message_group_id": None,
-        "is_last_message": True
-    })
+    #redis_msg = json.dumps({
+    #    "data": json_wav, 
+    #    "rate": rate, 
+    #    "text": text, 
+    #    "priority": priority, 
+    #    "request_time": (str(time.time()) if (type(request_time) is not str) else request_time),
+    #    "response_time": str(time.time()),
+    #    "message_group_id": None,
+    #    "is_last_message": True
+    #})
     # Push output to audio redis queue
-    redis_response = redis_conn.lpush("audio", redis_msg)
+    #redis_response = redis_conn.lpush("audio", redis_msg)
 
-    return redis_response
+    #return redis_response
+
+    return 1
 
 
 def get_read_speed(text, wav):
@@ -279,6 +277,7 @@ def adjust_read_speed(wav, text:str, read_speed:float):
 
 def process_text(
         text:str, 
+        is_push_to_redis:bool=False,
         push_chunks:bool=True, 
         return_full:bool=False, 
         is_add_start_click:bool=False,  
@@ -532,27 +531,28 @@ def process_text(
 
                 response_time = time.time()
                 logger.debug(f"Reader.main.process_text(): {response_time =}")
-                redis_msg = json.dumps({
-                                        "data": json_wav, 
-                                        "rate": rate, 
-                                        "text": chunk, 
-                                        "priority": priority, 
-                                        "request_time": request_time,
-                                        "response_time": str(response_time),
-                                        "message_group_id": str(group_id),
-                                        "is_last_message": is_last_chunk
-                                        })
-                #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
-                try:
-                    redis_response = redis_conn.lpush("audio", redis_msg)
-                    logger.debug(f"Reader.main.process_text(): {redis_response = }")
+                if is_push_to_redis:
+                    redis_msg = json.dumps({
+                                            "data": json_wav, 
+                                            "rate": rate, 
+                                            "text": chunk, 
+                                            "priority": priority, 
+                                            "request_time": request_time,
+                                            "response_time": str(response_time),
+                                            "message_group_id": str(group_id),
+                                            "is_last_message": is_last_chunk
+                                            })
+                    #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
+                    try:
+                        redis_response = redis_conn.lpush("audio", redis_msg)
+                        logger.debug(f"Reader.main.process_text(): {redis_response = }")
 
-                    # If did not get an appropriate 
-                    if not redis_response or redis_response < 0:
-                        logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
+                        # If did not get an appropriate 
+                        if not redis_response or redis_response < 0:
+                            logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
 
-                except redis.exceptions.ConnectionError:
-                    logger.error(f"Reader.main.process_text(): Error sending response to redis")
+                    except redis.exceptions.ConnectionError:
+                        logger.error(f"Reader.main.process_text(): Error sending response to redis")
 
             # Save chunk wav
             full_wav.append(wav)
@@ -664,25 +664,26 @@ def process_text(
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
         logger.debug(f"Reader.main.process_text(): {response_time = :.2f}")
-        redis_msg = json.dumps({
-                                "data": json_wav, 
-                                "rate": rate, 
-                                "text": text, 
-                                "priority": priority, 
-                                "request_time": request_time,
-                                "response_time": str(response_time),
-                                "message_group_id": None,
-                                "is_last_message": True
-                                })
-        #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
-        try:
-            redis_response = redis_conn.lpush("audio", redis_msg)
-            logger.debug(f"Reader.main.process_text(): {redis_response = }")
-            # If did not get an appropriate 
-            if not redis_response or redis_response < 0:
-                logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
-        except redis.exceptions.ConnectionError:
-            logger.error(f"Reader.main.process_text(): Error sending response to redis")
+        if is_push_to_redis:
+            redis_msg = json.dumps({
+                                    "data": json_wav, 
+                                    "rate": rate, 
+                                    "text": text, 
+                                    "priority": priority, 
+                                    "request_time": request_time,
+                                    "response_time": str(response_time),
+                                    "message_group_id": None,
+                                    "is_last_message": True
+                                    })
+            #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
+            try:
+                redis_response = redis_conn.lpush("audio", redis_msg)
+                logger.debug(f"Reader.main.process_text(): {redis_response = }")
+                # If did not get an appropriate 
+                if not redis_response or redis_response < 0:
+                    logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
+            except redis.exceptions.ConnectionError:
+                logger.error(f"Reader.main.process_text(): Error sending response to redis")
             
         return wav
 
