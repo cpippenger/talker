@@ -285,7 +285,7 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=True
+        should_retry:bool=False
     ):
     """
     Given a block of text, run the text through the tts model and send the resulting wav to the audio redis queue.
@@ -323,56 +323,6 @@ def process_text(
     if not text or text.strip() == "":
         # Return nothing
         return []
-
-    # Massage input text to help tts pronunciation 
-    text = text.replace("blue 1", "blue-one")
-    #text = text.replace("Star sage", "star-sage,")
-    #text = text.replace("star sage", "star-sage,")
-    text = text.replace("Star sage", "star-sage")
-    text = text.replace("star sage", "star-sage")
-
-    #if text.lower().startswith("star sage "):
-    #    text = text.replace("Star sage ", "star-sage, ")
-    #    text = text.replace("star sage ", "star-sage, ")
-    text = text.replace("Group 1 group", "Group 1")
-    text = text.replace("Group 2 group", "Group 2")
-    text = text.replace("Group 3 group", "Group 3")
-    text = text.replace("hostile", "hhostile")
-
-    if "VIC" in text:
-        text.replace("deep", "deep,")
-        text.replace("VIC", "Vick,")
-
-    if ".. echelon east" in text:
-        text = text.replace(".. echelon east", "echelon east..")
-    if ".. echelon west" in text:
-        text = text.replace(".. echelon west", "echelon west..")
-    if ".. echelon north" in text:
-        text = text.replace(".. echelon north", "echelon north..")
-    if ".. echelon south" in text:
-        text = text.replace(".. echelon south", "echelon south..")
-    if ".. echelon southeast" in text:
-        text = text.replace(".. echelon southeast", "echelon southeast..")
-    if ".. echelon northeast" in text:
-        text = text.replace(".. echelon northeast", "echelon northeast..")
-
-    if text.startswith("south trail group"):
-        text = text.replace("south trail group", "south trail group,")
-    if text.startswith("north trail group"):
-        text = text.replace("north trail group", "north trail group,")
-
-    text = text.replace("2 contacts", "2-contacts")
-    text = text.replace("2 contacts", "2-contacts")
-    text = text.replace("3 contacts", "3-contacts")
-    #if text.lower() == "south group maneuver":
-    #    # Replace text after 's' incase it is caps
-    #    text = text.replace("outh group maneuver", "outh group! maneuver")
-    #text = text.replace("south group 2-contacts", "south group! 2-contacts")
-    #text = text.replace("south group 2 contacts", "south group! 2 contacts")
-    #text = text.replace("south group 3-contacts", "south group! 3-contacts")
-    #text = text.replace("south group 3 contacts", "south group! 3 contacts")
-    #text = text.replace("south group 4-contacts", "south group! 4-contacts")
-    #text = text.replace("south group 4 contacts", "south group! 4 contacts")
 
     # If text contains silence tokens
     if "." in text:
@@ -507,18 +457,12 @@ def process_text(
                 #logging.debug(f"main.tts(): Received output from model: {type(wav) = }")
                 # audio_queue.put(json.dumps({"data":json_wav, "rate": rate}))
                 #logger.debug(f"Reader.main.process_text(): Sending chunk to queue")
-                logger.debug(f"Reader.main.process_text(): {len(wav) = }")
-                logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
-                logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
-                logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
-                logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
-                logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
-                # Send wav to queue
-                # Revert text augmentation
-                chunk = chunk.replace("blue-one", "blue 1")
-                chunk = chunk.replace("star-sage", "star sage")
-                chunk = chunk.replace("south group!", "south group")
-                chunk = chunk.replace("hhostile", "hostile")
+                #logger.debug(f"Reader.main.process_text(): {len(wav) = }")
+                #logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
+                #logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
+                #logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
+                #logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
+                #logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
                 
                 # Check if is the last chunk being sent from the original text
                 is_last_chunk = False
@@ -651,16 +595,13 @@ def process_text(
         json_wav = wav.astype(float).tolist()
 
         #logger.debug(f"Reader.main.process_text(): Sending chunk to queue")
-        logger.debug(f"Reader.main.process_text(): {len(wav) = }")
-        logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
-        logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
-        logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
-        logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
-        logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
-        text = text.replace("blue-one", "blue 1")
-        text = text.replace("star-sage", "star sage")
-        text = text.replace("south group!", "south group")
-        text = text.replace("hhostile", "hostile")
+        #logger.debug(f"Reader.main.process_text(): {len(wav) = }")
+        #logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
+        #logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
+        #logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
+        #logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
+        #logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
+
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
         logger.debug(f"Reader.main.process_text(): {response_time = :.2f}")
