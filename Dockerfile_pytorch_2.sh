@@ -2,7 +2,8 @@
 # https://github.com/pytorch/pytorch/blob/main/Dockerfile
 
 # Set up base Ubuntu 20 image
-ARG BASE_IMAGE=ubuntu:20.04
+#ARG BASE_IMAGE=ubuntu:20.04
+ARG BASE_IMAGE=nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 ARG PYTHON_VERSION=3.10
 
 FROM ${BASE_IMAGE} as dev-base
@@ -126,7 +127,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # Install ML libs
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-RUN pip install bitsandbytes
+RUN pip install deepspeed
 RUN pip install bitsandbytes
 RUN pip install safetensors
 RUN pip install tokenizers
