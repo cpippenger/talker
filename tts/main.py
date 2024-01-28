@@ -78,6 +78,7 @@ class Message(BaseModel):
     is_add_start_click: bool = False
     is_add_end_click: bool = False
     speed: float = None
+    voice_clone: str = None
 
 # Audio samples used by TTS
 audio_samples = [
@@ -285,7 +286,8 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=False
+        should_retry:bool=False,
+        voice_clone:str=None
     ):
     """
     Given a block of text, run the text through the tts model and send the resulting wav to the audio redis queue.
@@ -323,6 +325,10 @@ def process_text(
     if not text or text.strip() == "":
         # Return nothing
         return []
+    
+    if voice_clone:
+        init_speaker_wav = copy(voice.speaker_wav)
+        voice.speaker_wav = voice_clone
 
     # If text contains silence tokens
     if "." in text:
@@ -594,6 +600,10 @@ def process_text(
         wav = voice.normalize(wav)
         json_wav = wav.astype(float).tolist()
 
+        if voice_clone:
+            # Reset back to original speaker wav
+            voice.speaker_wav = init_speaker_wav
+
         #logger.debug(f"Reader.main.process_text(): Sending chunk to queue")
         #logger.debug(f"Reader.main.process_text(): {len(wav) = }")
         #logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
@@ -653,6 +663,7 @@ async def tts(message: Message):
     is_add_start_click = message.is_add_start_click
     is_add_end_click = message.is_add_end_click
     speed = message.speed
+    voice_clone = message.voice_clone
 
     # If given an empty string
     if not text or text.strip() == "":
@@ -665,7 +676,7 @@ async def tts(message: Message):
         push_to_queue(wav=wav, rate=rate)
 
     else: 
-        wav = process_text(text, is_add_start_click=is_add_start_click, is_add_end_click=is_add_end_click, priority=message.priority, request_time=message.time, speed=speed)
+        wav = process_text(text, is_add_start_click=is_add_start_click, is_add_end_click=is_add_end_click, priority=message.priority, request_time=message.time, speed=speed, voice_clone=voice_clone)
 
     logger.info(f"Reader.tts(): {type(wav)}")
 

@@ -85,22 +85,7 @@ class Robot():
         }
         self.max_generation_time = 10
         self.init_models()
-        synth_params = {
-                #"gpt_cond_len" : 4096,
-                "top_k" : 64, # Default 50
-                "top_p" : 0.85, # Default 0.85
-                "decoder_iterations" : 10,
-                "temperature" : 0.2, # Default 0.85
-                "length_penalty" : 1.0, # Default 1.0
-                "repetition_penalty" : 1.8, # Default 2.0
-                "cond_free_k" : 2.0, # Default 2.0
-                "diffusion_temperature" : 1.0, # Default 1.0    
-            }
-        self.voice = VoiceBox(
-                    config_filename="../voicebox_config.json", 
-                    speaker_wav="../data/gits_3.wav", 
-                    synth_params=synth_params
-        )
+
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
     def to_dict(self):
@@ -360,6 +345,7 @@ class Robot():
             logging.info(f"{__class__.__name__}.get_robot_response(): Unprocessed output = {output}")
             # Filter own name prompts
             output = output.replace("lly:", "")
+            output = output.replace("Bi ", "")
             #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
             # Count tokens in output
             token_count = len(output.split(" "))

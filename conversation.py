@@ -1,8 +1,10 @@
 import os
+import json
 import time
 import pickle
 #import IPython
 import logging
+import requests
 import numpy as np
 from copy import copy
 from datetime import datetime
@@ -49,6 +51,9 @@ class Conversation():
         self.max_memory_insert_size = 3
         self.sentiment = Sentiment()
         self.is_debug = is_debug
+        
+        self.voice_ip = "192.168.1.120"
+        self.voice_port = "8100"
         #self.dbc = DataBaseController()
         
     def __repr__(self):
@@ -146,6 +151,7 @@ class Conversation():
         prompt += f"{self.robot.name}:"
         
         return prompt
+    
     
     def process_comment(self, 
                         commentor:str, 
@@ -252,7 +258,7 @@ class Conversation():
         # If should speak response
         if is_speak_response:
             logging.info(f"{__class__.__name__}.{func_name}(): Reading response")
-            wav, rate, wavs = self.robot.voice.read_text(output)
+            wav = self.tts(output)
             #IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
         
         # Get sentiment for the comment
@@ -288,11 +294,37 @@ class Conversation():
         logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
         logging.info(f"{__class__.__name__}.{func_name}(): tokens_per_sec = {tokens_per_sec}")
 
+        return output, wav
 
 
-        return output, wav, rate
-    
-    
+    def tts(self, text):
+        
+        payload = {'text': text, 'time': 'time', 'priority' : "100.0"}
+        
+        start_time = time.time()
+        r = requests.post(f"http://{self.voice_ip}:{self.voice_port}/tts", data=json.dumps(payload))
+
+        if not r.status_code == 200:
+            logging.error(f"{__class__.__name__}.tts(): Error getting tts response {r.status_code = }")
+            return None
+        if not "wav" in r.json():
+            logging.error(f"{__class__.__name__}.tts(): Error missing wav in response {r.json() = }")
+            return None
+        
+        # Extract wav
+        wav = r.json()["wav"]
+
+        # Profile
+        end_time = time.time()
+        run_time = end_time - start_time
+        words_per_sec = len(text.split(" ")) / run_time
+        logging.debug(f"{run_time = :.2f}s")
+        logging.debug(f"{words_per_sec = :.2f}")
+        logging.debug(f"Run_time ratio = {(len(wav) / 24000) / run_time :.2f}")
+
+        return wav
+
+
 class ChatHistory():
     def __init__(self, 
                  personA:str, 
