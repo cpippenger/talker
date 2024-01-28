@@ -150,12 +150,39 @@ class VoiceBox():
         if self.model_name == "xtts_v1.1":
             self.logger.debug(f"{__class__.__name__}.init_model(): Init xtts model")
             # Download model
-            ModelManager().download_model("tts_models/multilingual/multi-dataset/xtts_v1.1")
+            #ModelManager().download_model("tts_models/multilingual/multi-dataset/xtts_v1.1")
             # Set path to model files
             # TODO: Move to config file
             model_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v1.1/model.pth"
             config_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v1.1/config.json"
             vocab_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v1.1/vocab.json" 
+            # Init config 
+            self.model_config = XttsConfig()
+            self.model_config.load_json(config_path)
+            # Init model
+            self.model = Xtts.init_from_config(self.model_config)
+            self.model.load_checkpoint(
+                self.model_config,
+                checkpoint_path=model_path,
+                vocab_path=vocab_path,
+                eval=True,
+                use_deepspeed=False
+            )
+            # If is using the gpu
+            if self.config["model"]["device"] == "cuda":
+                self.logger.debug(f"{__class__.__name__}.init_model(): Sending model to gpu")
+                self.model.cuda()
+
+        if self.model_name == "xtts_v2":
+            self.logger.debug(f"{__class__.__name__}.init_model(): Init xtts model")
+            # Download model
+            #ModelManager().download_model("tts_models/multilingual/multi-dataset/xtts_v2")
+            # Set path to model files
+            # TODO: Move to config file
+            model_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2.0.2/model.pth"
+            config_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2.0.2/config.json"
+            vocab_path = "/root/.local/share/tts/tts_models--multilingual--multi-dataset--xtts_v2.0.2/vocab.json" 
+            
             # Init config 
             self.model_config = XttsConfig()
             self.model_config.load_json(config_path)
@@ -224,7 +251,7 @@ class VoiceBox():
         if not text or text.strip() == "":
             return [], 24000
 
-        if self.model_name == "xtts_v1.1":
+        if self.model_name == "xtts_v1.1" or self.model_name == "xtts_v2":
             
             self.logger.debug(f"{__class__.__name__}.tts(): Using xtts model with")
             self.logger.debug(f"{__class__.__name__}.tts(): params = {self.config['synth_params']}, {self.speaker_wav = }")

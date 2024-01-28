@@ -2,7 +2,7 @@
     "model" : {
         "description" : "Trained to convert text to speech",
         "framework" : "huggingface/tts",
-        "name" : "xtts_v1.1",
+        "name" : "xtts_v2",
         "source" : "https://huggingface.co/xtts_v1.1",
         "api" : "https://github.com/coqui-ai/TTS/blob/dev/TTS/tts/models/xtts.py", 
         "device" : "cuda",

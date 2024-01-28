@@ -3,6 +3,7 @@ Microservice that accepts text inputs and stores them in a queue. Provides a met
 """
 import os
 import time
+from typing import Union
 from types import NoneType
 import uuid
 import json
@@ -78,7 +79,7 @@ class Message(BaseModel):
     is_add_start_click: bool = False
     is_add_end_click: bool = False
     speed: float = None
-    voice_clone: str = None
+    voice_clone: Union[str,list] = None
 
 # Audio samples used by TTS
 audio_samples = [
@@ -361,9 +362,9 @@ def process_text(
                 # If next chunk is empty (the result of splitting a ..)
                 if texts[chunk_index + 1] == "":
                     # TODO: Move to config
-                    pause_length = 0.4
+                    pause_length = 0.3
                 else:
-                    pause_length = 0.25
+                    pause_length = 0.15
             #logging.debug(f"main.tts({chunk = })")
 
             # Determine if should add a click on or off noise to the audio chunk
