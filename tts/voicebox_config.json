@@ -16,7 +16,7 @@
         "apply_low_pass" : true,
         "low_pass_cutoff" : 4000,
         "high_pass_cutoff" : 200,
-        "apply_high_pass" : true,
+        "apply_high_pass" : false,
         "threshold" : -20, 
         "ratio" : 4.0, 
         "attack" : 5.0, 
