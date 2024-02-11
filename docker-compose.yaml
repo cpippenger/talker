@@ -7,7 +7,7 @@ services:
     #user: postgres
     container_name: postgres
     environment:
-      POSTGRES_DB: socom
+      POSTGRES_DB: chat
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
     ports:
@@ -25,7 +25,7 @@ services:
     depends_on:
       - postgres
     environment:
-      DATABASE_URL: postgres://test:test@postgres/socom
+      DATABASE_URL: postgres://test:test@postgres/chat
     ports:
       - "5000:5000"
     volumes:
@@ -41,7 +41,7 @@ services:
     depends_on:
       - postgres
     environment:
-      DATABASE_URL: postgres://test:test@postgres/socom
+      DATABASE_URL: postgres://test:test@postgres/chat
     ports:
       - "81:81"
     volumes:

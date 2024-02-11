@@ -1,7 +1,7 @@
 FROM postgres:latest
 
 # Set environment variables
-ENV POSTGRES_DB socom
+ENV POSTGRES_DB chat
 ENV POSTGRES_USER test
 ENV POSTGRES_PASSWORD test
 
