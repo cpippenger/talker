@@ -36,6 +36,9 @@ DATABASE_USERNAME = os.environ.get('DATABASE_USER',"test")
 DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD',"test")
 DATABASE_SCHEMA = os.environ.get('DATABASE_SCHEMA',"chat")
 DATABASE_HOST = os.environ.get('DATABASE_HOST',"127.0.0.1")
+SERVICE_PORT = os.environ.get('SERVICE_PORT',5000)
+SERVICE_HOST = os.environ.get('SERVICE_HOST',"0.0.0.0")
+SERVICE_DEBUG = os.environ.get('SERVICE_DEBUG','True')
 TTS_URL=os.environ.get('TTS_URL',"http://localhost:6666/api/tts?text=")
 
 app = Flask(__name__,static_folder="cache")
@@ -103,4 +106,4 @@ if __name__ == '__main__':
             print("Unrecognized Argument")
             
     else:
-        app.run(debug=True, host="0.0.0.0", port=5000)
+        app.run(debug=SERVICE_DEBUG == 'True', host=SERVICE_HOST, port=SERVICE_PORT)
