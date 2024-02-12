@@ -54,6 +54,12 @@ class Conversation():
         
         self.voice_ip = "192.168.1.120"
         self.voice_port = "8100"
+
+        if "pygmalion" in robot.model_name.lower():
+            self.model_type = "pygmalion"
+        elif "mytho" in robot.model_name.lower():
+            self.model_type = "mytho"
+
         #self.dbc = DataBaseController()
         
     def __repr__(self):
@@ -134,21 +140,28 @@ class Conversation():
             memory_insert_count += 1
             if memory_insert_count > self.max_memory_insert_size:
                 break
+        if self.model_type == "pygmalion":
+            prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
+            prompt += "<START>\n"
+            #prompt += "[DIALOGUE HISTORY]"       
+            # Dialogue history
+            prompt += chat_history.prompt()
         
-        prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
-        prompt += "<START>\n"
-        #prompt += "[DIALOGUE HISTORY]"       
-        # Dialogue history
-        prompt += chat_history.prompt()
-        
-        # Randomly add things to prompt to steer conversation
-        #if random() > 0.75:
-        #    prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
-        #if random() > 0.5:
-        #    prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
-        
-        # Robot name prompt
-        prompt += f"{self.robot.name}:"
+            # Randomly add things to prompt to steer conversation
+            #if random() > 0.75:
+            #    prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
+            #if random() > 0.5:
+            #    prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
+            
+            # Robot name prompt
+            prompt += f"{self.robot.name}:"
+        elif self.model_type == "mytho":
+            prompt = f"<System prompt/Character Card>\n"
+            prompt += "### Instruction:\n"
+            prompt += "Write Billy's next reply in a chat between Alec and Billy. Write a single reply only.\n"
+            prompt += chat_history.prompt()
+            prompt += "### Response:"
+
         
         return prompt
     
@@ -203,7 +216,7 @@ class Conversation():
         # Create comment object
         # Save comment to chat history
         chat_history.add_comment(Comment(commentor, comment, sentiment))
-        # Generate robot response                
+        # Generate robot response
         prompt = self.build_prompt(commentor, self.chat_buffer_size)
         if prompt_info:
             prompt = prompt_info + "\n" + prompt

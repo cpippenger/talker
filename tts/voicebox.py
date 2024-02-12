@@ -116,6 +116,9 @@ class VoiceBox():
         self.logger.debug(f"{__class__.__name__}.init(): Complete at {self.start_time}")
 
 
+    #def get_speaker_wav(retry_index:int=None):
+
+
     def load_config(self, config_filename:str="voicebox_config.json"):
         # Load config file
         #try:
@@ -244,17 +247,17 @@ class VoiceBox():
         wav : np.ndarray[float] - An array of float values representing the audio signal
         samplerate : int - An integer giving the sample rate to use when playing the audio
         """
-        self.logger.debug(f"{__class__.__name__}.tts({text = })")
-        self.logger.debug(f"{__class__.__name__}.tts({self.model_name = })")
+        #self.logger.debug(f"{__class__.__name__}.tts({text = })")
+        #self.logger.debug(f"{__class__.__name__}.tts({self.model_name = })")
 
         # If given empty string
         if not text or text.strip() == "":
-            return [], 24000
+            return [], 24050
 
         if self.model_name == "xtts_v1.1" or self.model_name == "xtts_v2":
             
-            self.logger.debug(f"{__class__.__name__}.tts(): Using xtts model with")
-            self.logger.debug(f"{__class__.__name__}.tts(): params = {self.config['synth_params']}, {self.speaker_wav = }")
+            #self.logger.debug(f"{__class__.__name__}.tts(): Using xtts model with")
+            #self.logger.debug(f"{__class__.__name__}.tts(): params = {self.config['synth_params']}, {self.speaker_wav = }")
             outputs = self.model.synthesize(
                 text,
                 self.model_config,
@@ -269,7 +272,7 @@ class VoiceBox():
             #print(f"voicebox.tts(): {type(wav) = }")
             #print(f"voicebox.tts(): {type(wav[0]) = }")
             
-            return wav, 24000
+            return wav, 24050
         
         # IF using Tacotron model
         elif self.model_name == "hf-tacotron2":
@@ -344,19 +347,6 @@ class VoiceBox():
         return (arr - arr.min(axis=0)) / (arr.max(axis=0) - arr.min(axis=0))
     
 
-    @classmethod 
-    def load_wav_file_to_numpy (cls, wav_file_name :str): 
-        """
-        Given a wav file name, return...
-        1. the numpy array of the wav content, and 
-        2. the audio rate (int)
-        """
-        assert(os.path.isfile(wav_file_name)) 
-
-        audio_seg = AudioSegment.from_file(wav_file_name, format = "wav")
-        return np.array(audio_seg.get_array_of_samples()), int(audio_seg.frame_rate)
-    
-
     def read_text(
             self, 
             text:str,
@@ -376,11 +366,12 @@ class VoiceBox():
             wav : np.ndarray[float] - An array of float values representing the audio signal
             samplerate : int - An integer giving the sample rate to use when playing the audio
         """
-        self.logger.debug(f"{__class__.__name__}.read_text({text = }")
+        #self.logger.info(f"{__class__.__name__}.read_text()")
+        #self.logger.debug(f"{__class__.__name__}.read_text({text = }")
         
         # If given empty string
         if not text or text.strip() == "":
-            return [], 24000
+            return [], 24050
         
         start_time = time()
         #logging.info(f"{__class__.__name__}.{__name__}(text={text}, rate_modifier={rate_modifier}, is_say={is_say})")
@@ -407,8 +398,7 @@ class VoiceBox():
             # For each sentence
             for sentence_index in range(len(text_split)):
                 sentence = text_split[sentence_index]
-                self.logger.debug(f"Reading {sentence}")
-                self.logger.debug(f"{__class__.__name__}.read_text(): Reading {sentence =}")
+                #self.logger.debug(f"{__class__.__name__}.read_text(): Reading {sentence =}")
                 sentence = sentence.strip()
                 #wav, rate = robot.read_response(sentence.strip())
                 if len(sentence) < 2:
@@ -417,9 +407,9 @@ class VoiceBox():
                     continue
                 #try:
                     
-                self.logger.debug(f"{__class__.__name__}.read_text(): Calling self.tts")
+                #self.logger.debug(f"{__class__.__name__}.read_text(): Calling self.tts")
                 wav, sample_rate = self.tts(sentence)
-                self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
+                #self.logger.debug(f"{__class__.__name__}.read_text(): Got results from self.tts")
 
                 # If should add a start click
                 #if is_add_start_click and sentence_index == 0:
@@ -440,17 +430,17 @@ class VoiceBox():
 
             # Stack the wavs into a single wav
             if (isinstance(wav, np.ndarray)):
-                self.logger.debug(f"{__class__.__name__}.read_text(): Output is a numpy array {wav.shape }")
+                #self.logger.debug(f"{__class__.__name__}.read_text(): Output is a numpy array {wav.shape }")
                 wav = np.hstack(wavs)
             elif (isinstance(wav, torch.Tensor)):
                 wav = torch.hstack(wavs)
 
 
         else:
-            self.logger.debug(f"{__class__.__name__}.read_text(): Running full text {text}")
+            #self.logger.debug(f"{__class__.__name__}.read_text(): Running full text {text}")
             #try:
             wav, sample_rate = self.tts(text)
-            self.logger.debug(f"{__class__.__name__}.read_text(): Got model response: {len(wav) = }")
+            #self.logger.debug(f"{__class__.__name__}.read_text(): Got model response: {len(wav) = }")
 
         
         #wav = wav.squeeze(1)
@@ -464,6 +454,8 @@ class VoiceBox():
         init_read_speed, init_read_length = self.get_read_speed(text, wav)
         self.logger.debug(f"{__class__.__name__}.read_text(): {init_read_speed = :.2f}")
 
+        #wav, read_speed = self.adjust_read_speed(wav, text, init_read_speed)
+
         # Determine playback speed to hit target read speed (words per second)
         volume = None
         # If not given a specific speed
@@ -472,28 +464,16 @@ class VoiceBox():
             speed = self.config["vocoder"]["speed_up"]
         
         # Set the speed adjustment based on initial read speed
-        if init_read_speed < 0.8:
-            speed = speed + (speed * 0.15)
-        elif init_read_speed < 0.9:
-            speed = speed + (speed * 0.1)
-        if init_read_speed < 1.0:
-            speed = speed + (speed * 0.05)
+        #if init_read_speed < 0.8:
+        #    speed = speed + (speed * 0.15)
+        #elif init_read_speed < 0.9:
+        #    speed = speed + (speed * 0.1)
+        #if init_read_speed < 1.0:
+        #    speed = speed + (speed * 0.05)
 
-        # Check if is a threat call
-        if "threat" in text.lower():
-            # Increase speed
-            speed = speed + (speed * .13)
-            self.logger.debug(f"{__class__.__name__}.read_text(): Speeding up threat call")
-            volume = 10
-        
-        if "maneuver" in text:
-            # Increase speed
-            speed = speed + (speed * .9)
-            self.logger.debug(f"{__class__.__name__}.read_text(): Speeding up maneuver call")
-            volume = 5
 
         # TODO: Return the initial wav file before post processing to evaluate the effect on audio quality
-        orig_wav = copy(wav)
+        #orig_wav = copy(wav)
         # Apply post processing
         wav = self.apply_post_processing(wav, speed=speed, volume=volume)
 
@@ -508,6 +488,82 @@ class VoiceBox():
         return wav, sample_rate, wavs
 
 
+    def get_read_speed(self, text, wav, sample_rate=24050):
+        if len(wav) == 0:
+            return -1, -1
+        # Measure the spoken words per second in the audio
+        words = nltk.tokenize.word_tokenize(text)
+        word_count = 0
+        for word in words:
+            if word in [","]:
+                continue
+            word_count += 1
+        audio_length = len(wav) / sample_rate
+        words_per_second = word_count / audio_length
+        return words_per_second, audio_length
+
+
+    def adjust_read_speed(self, wav, text:str, read_speed:float):
+        """
+        Given a wav float array, try to normalize the read speed to a target value.
+        Measure the words per second spoken in the wav. Then based on the value
+        apply a sliding scale of adjustments to get the audio closer to a normalized 
+        read speed.
+
+        Parameters:
+        -----------
+        wav : list[float|np.ndarray]
+            A float array representing an audio waveform.
+        text : str
+            The text that the TTS model used to generate the waveform.
+        read_speed : float
+            The initial measured read_speed.
+        
+        Returns:
+        --------
+        wav : list[float|np.ndarray]
+            The waveform with the applied speed up, if any were triggered.
+        read_speed : float
+            The new read speed with the speed up.
+        """
+        #logger.info(f"Reader.adjust_read_speed()")
+        #logger.debug(f"Reader.adjust_read_speed(wav, {text = }, {read_speed = })")
+        self.logger.debug(f"Reader.adjust_read_speed(wav, text, {read_speed = })")
+        # If read speed is close to target
+        # Apply a sliding scale speed up
+        initial_read_speed = read_speed
+        # If read speed is close to target
+        # Apply a sliding scale speed up
+        if read_speed > 1.35 and read_speed < 1.4:
+            self.logger.warning(f"Reader.adjust_read_speed(): Very Slow read speed detected")
+            # Apply a another speed up
+            wav = self.apply_speed_up(wav, 1.15)
+            read_speed, read_length = self.get_read_speed(text, wav)
+            self.logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
+
+        if read_speed > 1.4 and read_speed < 1.5:
+            self.logger.warning(f"Reader.adjust_read_speed(): Slow read speed detected")
+            # Apply a another speed up
+            wav = self.apply_speed_up(wav, 1.1)
+            read_speed, read_length = self.get_read_speed(text, wav)
+            self.logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
+
+        if read_speed > 1.5 and read_speed < 1.55:
+            self.logger.warning(f"Reader.adjust_read_speed(): Slightly slow read speed detected")
+            # Apply a another speed up
+            wav = self.apply_speed_up(wav, 1.05)
+            read_speed, read_length = self.get_read_speed(text, wav)
+            self.logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
+
+        #if read_speed > read_speed_upper_threshold:
+        #    logger.warning(f"Reader.adjust_read_speed(): Fast read speed detected")
+        #    #wav = voice.apply_speed_up(wav, 1.32)
+        #if read_speed != initial_read_speed:
+        #    logger.debug(f"Reader.adjust_read_speed(): Adjusted read speed from {initial_read_speed :.2f} to {read_speed :.2f}")
+
+        return wav, read_speed
+
+
     def apply_speed_up(self, wav, speed):
         """
         Given a wav file perform a speed up to increase the spoken words per second.        
@@ -517,13 +573,14 @@ class VoiceBox():
         sound = AudioSegment.from_file("cache/test.wav", format = "wav")
         #self.logger.debug(f"{__class__.__name__}.apply_speed_up(): Applying speed up")
         sound = sound.speedup(speed, 150, 25)
+        sound = sound.strip_silence(**self.silence_filter_params)
         wav = np.array(sound.get_array_of_samples())
         return wav
 
 
-    def apply_post_processing(self, wav, speed:float=None, volume:float=None):
-        self.logger.info(f"{__class__.__name__}.apply_post_processing()")
-        self.logger.debug(f"{__class__.__name__}.apply_post_processing(wav, {speed = }, {volume = })")
+    def apply_post_processing(self, wav, speed:float=None, volume:float=None, sample_rate=24050):
+        #self.logger.info(f"{__class__.__name__}.apply_post_processing()")
+        #self.logger.debug(f"{__class__.__name__}.apply_post_processing(wav, {speed = }, {volume = })")
 
         # If has some kind of post processing to apply
         if (self.config["vocoder"]["speed_up"] != 1.0 or speed) or \
@@ -537,11 +594,11 @@ class VoiceBox():
                 except FileExistsError:
                     pass
                 #self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Applying post processing")
-                sf.write("cache/test.wav", wav, 24000)
+                sf.write("cache/test.wav", wav, sample_rate)
                 sound = AudioSegment.from_file("cache/test.wav", format = "wav")
 
                 if volume:
-                    self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Adjusting volume")
+                    #self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Adjusting volume")
                     sound = sound + volume
 
                 #self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Striping silence")
@@ -552,7 +609,7 @@ class VoiceBox():
                     # Speed adjustment
                     #self.logger.debug(f"{__class__.__name__}.tts(): Applying speed up")
                     if speed:
-                        self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Applying speed up: {speed}")
+                        #self.logger.debug(f"{__class__.__name__}.apply_post_processing(): Applying speed up: {speed}")
                         sound = sound.speedup(speed, 150, 25)
                     else:
                         self.logger.debug(f'{__class__.__name__}.apply_post_processing(): Applying speed up: {self.config["vocoder"]["speed_up"]}')
@@ -593,18 +650,6 @@ class VoiceBox():
             pass
         
         return wav
-
-
-    def get_read_speed(self, text, wav):
-        words = nltk.tokenize.word_tokenize(text)
-        word_count = 0
-        for word in words:
-            if word in [","]:
-                continue
-            word_count += 1
-        audio_length = len(wav) / 24050
-        words_per_second = word_count / audio_length
-        return words_per_second, audio_length
 
 
 def expose(prefix:str):

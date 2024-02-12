@@ -167,7 +167,8 @@ class Robot():
             elif self.model_name:
                 logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
                 self.model_source = self.model_name
-                self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name,
+                                                                device_map="cuda")
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 #config = AutoConfig.from_pretrained(model_name)
                 ##with init_empty_weights():
@@ -178,7 +179,7 @@ class Robot():
         if not self.is_use_bnb:
             # Set precision to 16 bit
             logging.info(f"{__class__.__name__}.{__name__}(): Setting precision to fp16")
-            self.model.half()
+            #self.model.half()
             # If is using gpu
             if self.is_use_gpu:
                 # Send model to gpu

@@ -9,13 +9,18 @@ import uuid
 import json
 import redis
 import logging
+import zipfile
+from zipfile import ZipFile
 import threading
 from copy import copy
+from nltk.tokenize import sent_tokenize
 import numpy as np
 from functools import reduce
 from pydantic import BaseModel
+from fastapi import FastAPI, File, UploadFile
 from fastapi import Request, Response
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 # Init nltk
@@ -44,6 +49,17 @@ logging.getLogger("speechbrain").setLevel(logging.WARNING)
 logging.getLogger("espeakng").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+
+UPLOAD_FOLDER = "data"
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+# Set a lower bound on read speed, when the words per second are below this level there is a problem.
+read_speed_lower_threshold = 1.5
+# Set an upper bound. Often when the model skips words the read_speed will be too high.
+read_speed_upper_threshold = 5.0
 
 port = os.environ.get("READER_PORT", 8100)
 
@@ -85,13 +101,98 @@ class Message(BaseModel):
 audio_samples = [
     "data/gits_3.wav",
     "data/gits_2.wav",
+    "data/gits_2.wav",
     "data/gits.wav"
 ]
 
 
+data_folder = "data"
+
+#import os
+#for file in os.listdir("data/"):
+#    if file.endswith(".wav"):
+
+voice_catalogue = {
+    "major" : [
+        ["data/major/major_11.wav","data/major/major_12.wav","data/major/major_13.wav","data/major/major_2_02.wav"],
+        ["data/major/major_05.wav","data/major/major_06.wav","data/major/major_07.wav"],
+        ["data/major/major_2_01.wav","data/major/major_2_02.wav","data/major/major_2_03.wav"],
+        ["data/major/major_2_04.wav","data/major/major_2_05.wav","data/major/major_2_06.wav"],
+        ["data/major/major_06","data/major/major_2_05.wav","data/major/major_12.wav"]
+    ],
+    "trump" : [
+        ["data/trump/trump_11.wav","data/trump/trump_12.wav","data/trump/trump_13.wav","data/trump/trump_14.wav","data/trump/trump_15.wav","data/trump/trump_16.wav","data/trump/trump_17.wav","data/trump/trump_18.wav","data/trump/trump_19.wav","data/trump/trump_21.wav","data/trump/trump_22.wav","data/trump/trump_23.wav","data/trump/trump_24.wav","data/trump/trump_25.wav","data/trump/trump_26.wav","data/trump/trump_27.wav","data/trump/trump_28.wav","data/trump/trump_29.wav","data/trump/trump_30.wav",],
+        ["data/trump/trump_04.wav", "data/trump/trump_05.wav", "data/trump/trump_06.wav"],
+        ["data/trump/trump_07.wav", "data/trump/trump_09.wav", "data/trump/trump_10.wav"],
+        ["data/trump/trump_10.wav", "data/trump/trump_15.wav", "data/trump/trump_25.wav"],
+        ["data/trump/trump_07.wav", "data/trump/trump_09.wav", "data/trump/trump_13.wav"],
+    ],
+    "dsp" : [
+        ["data/dsp/dsp_07.wav","data/dsp/dsp_12.wav","data/dsp/dsp_13.wav","data/dsp/dsp_06.wav"],
+        ["data/dsp/dsp_01.wav","data/dsp/dsp_02.wav","data/dsp/dsp_03.wav","data/dsp/dsp_04.wav","data/dsp/dsp_05.wav","data/dsp/dsp_06.wav"],
+        ["data/dsp/dsp_07.wav","data/dsp/dsp_12.wav","data/dsp/dsp_13.wav"],
+        ["data/dsp/dsp_03.wav","data/dsp/dsp_04.wav","data/dsp/dsp_06.wav"],
+        ["data/dsp/dsp_05.wav","data/dsp/dsp_07.wav","data/dsp/dsp_.wav","data/dsp/dsp_06.wav"]
+    ]
+ }
+
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    #try:
+    upload_filename = file.filename
+    upload_name = upload_filename.replace(".zip", "")
+
+    logger.debug(f"Reader.upload(): {upload_filename= }")
+    # Save the uploaded file to the specified folder
+    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    logger.debug(f"Reader.upload(): Saving uploaded file to {file_path = }")
+    try:
+        with open(file_path, "wb") as f:
+            f.write(file.file.read())
+        f.close()
+    except Exception as e:
+        logger.debug(f"Reader.error(): Creating local file {upload_filename = }")
+
+    extract_folder = os.path.join(UPLOAD_FOLDER, upload_name, "extracted")
+
+    if not os.path.exists(extract_folder):
+        os.makedirs(extract_folder)
+
+    logger.debug(f"Reader.upload(): Extracting file at  {extract_folder = }")
+    try:
+        # Extract the contents of the ZIP file
+        with ZipFile(file_path, "r") as zip_ref:
+            zip_ref.extractall(extract_folder)
+    except Exception as e:
+        logger.debug(f"Reader.error(): Creating extracting file {extract_folder = }")
+
+
+    # Optional: Remove the uploaded ZIP file
+    os.remove(file_path)
+
+    # Identify all wav files in the upload
+
+    # Loop over extracted files and find WAV files
+    wav_files = []
+    for root, dirs, files in os.walk(extract_folder):
+        for file in files:
+            if file.lower().endswith(".wav"):
+                wav_files.append(f"{extract_folder}/{file}")
+    
+    voice_catalogue[upload_name] = [wav_files]
+
+    logger.debug(f"Reader.upload(): {voice_catalogue[upload_name]}")
+
+    return JSONResponse(content={"message": "File uploaded and extracted successfully", "extracted_folder": extract_folder})
+    #except Exception as e:
+    #    # Handle any exceptions and return an appropriate response
+    #    return HTTPException(status_code=500, detail=str(e))
+    
+
 @app.get("/test/")
 async def test():
-    logger.debug(f"MessageQueue.test()")
+    logger.debug(f"TTS.test()")
     return {"message": "All good"}
 
 
@@ -116,7 +217,8 @@ async def set_config(config: dict):
     voice.config = config
     voice.synth_params = config["synth_params"]
     voice.silence_filter_params = config["silence_filter_params"]
-    voice.speaker_wav = config["vocoder"]["speaker_wav"]
+    #voice.speaker_wav = config["vocoder"]["speaker_wav"]
+    voice.vocoder = config["vocoder"]
     #voice.__init__(config=config)
     return {"message": "Config updated"}
 
@@ -200,83 +302,6 @@ def push_to_queue(
     return 1
 
 
-def get_read_speed(text, wav):
-    words = nltk.tokenize.word_tokenize(text)
-    word_count = 0
-    for word in words:
-        if word in [","]:
-            continue
-        word_count += 1
-    audio_length = len(wav) / 24050
-    words_per_second = word_count / audio_length
-    return words_per_second, audio_length
-
-
-def adjust_read_speed(wav, text:str, read_speed:float):
-    """
-    Given a wav float array, try to normalize the read speed to a target value.
-    Measure the words per second spoken in the wav. Then based on the value
-    apply a sliding scale of adjustments to get the audio closer to a normalized 
-    read speed.
-
-    Parameters:
-    -----------
-    wav : list[float|np.ndarray]
-        A float array representing an audio waveform.
-    text : str
-        The text that the TTS model used to generate the waveform.
-    read_speed : float
-        The initial measured read_speed.
-    
-    Returns:
-    --------
-    wav : list[float|np.ndarray]
-        The waveform with the applied speed up, if any were triggered.
-    read_speed : float
-        The new read speed with the speed up.
-    """
-    logger.info(f"Reader.adjust_read_speed()")
-    logger.debug(f"Reader.adjust_read_speed(wav, {text = }, {read_speed = })")
-    # If read speed is close to target
-    # Apply a sliding scale speed up
-    initial_read_speed = read_speed
-    # Set a lower bound on read speed, when the words per second are below this level there is a problem.
-    read_speed_lower_threshold = 1.5
-    # Set an upper bound. Often when the model skips words the read_speed will be too high.
-    read_speed_upper_threshold = 2.35
-    # If read speed is close to target
-    # Apply a sliding scale speed up
-    if read_speed > 1.35 and read_speed < 1.4:
-        logger.warning(f"Reader.adjust_read_speed(): Very Slow read speed detected")
-        # Apply a another speed up
-        wav = voice.apply_speed_up(wav, 1.15)
-        read_speed, read_length = get_read_speed(text, wav)
-        logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
-
-    if read_speed > 1.4 and read_speed < 1.5:
-        logger.warning(f"Reader.adjust_read_speed(): Slow read speed detected")
-        # Apply a another speed up
-        wav = voice.apply_speed_up(wav, 1.1)
-        read_speed, read_length = get_read_speed(text, wav)
-        logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
-
-    if read_speed > 1.5 and read_speed < 1.55:
-        logger.warning(f"Reader.adjust_read_speed(): Slightly slow read speed detected")
-        # Apply a another speed up
-        wav = voice.apply_speed_up(wav, 1.05)
-        read_speed, read_length = get_read_speed(text, wav)
-        logger.warning(f"Reader.adjust_read_speed(): New read speed = {read_speed :.2f}")
-
-    if read_speed > read_speed_upper_threshold:
-        logger.warning(f"Reader.adjust_read_speed(): Fast read speed detected")
-        #wav = voice.apply_speed_up(wav, 1.32)
-
-    if read_speed != initial_read_speed:
-        logger.debug(f"Reader.adjust_read_speed(): Adjusted read speed from {initial_read_speed :.2f} to {read_speed :.2f}")
-
-    return wav, read_speed
-    
-
 def process_text(
         text:str, 
         is_push_to_redis:bool=False,
@@ -287,7 +312,7 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=False,
+        should_retry:bool=True,
         voice_clone:str=None
     ):
     """
@@ -326,17 +351,58 @@ def process_text(
     if not text or text.strip() == "":
         # Return nothing
         return []
-    
-    if voice_clone:
-        init_speaker_wav = copy(voice.speaker_wav)
-        voice.speaker_wav = voice_clone
 
-    # If text contains silence tokens
-    if "." in text:
-        logger.debug(f"Reader.main.process_text(): Interpret pauses")
+
+    text = text.replace("'", "'")
+    text = text.replace("We're", "We are")
+    text = text.replace("we're", "we are")
+    text = text.replace("it's", "it is")
+    text = text.replace("It's", "It is")
+    text = text.replace("I'll", "I will")
+    text = text.replace("i'll", "i will")
+    
+    # If given a specific voice to clone
+    if voice_clone:
+        # Copy original voice
+        init_speaker_wav = copy(voice.speaker_wav)
+        # If is a single value
+        if isinstance(voice_clone, str) and voice_clone in voice_catalogue:
+            logger.debug(f"Reader.process_text(): Using {voice_clone} voice from catalogue : {voice_catalogue[voice_clone][0]}")
+            voice.speaker_wav = voice_catalogue[voice_clone][0]
+        # Else given some specific string
+        else:    
+            voice.speaker_wav = voice_clone
+
+    # If text contains silence tokens or is long text
+    if "." in text or len(text) > 250:
+        #logger.debug(f"Reader.main.process_text(): Interpret pauses")
         # Split on '.'
-        texts = text.split(".")
-        logger.debug(f"Reader.main.process_text(): {texts = }")
+        #texts = text.split(".")
+
+        # Split the texts into individual sentences
+        texts = sent_tokenize(text)
+
+
+        # Recombine short sentences
+        combined_sentences = []
+        current_entry = texts[0]
+
+        for i in range(1, len(texts)):
+            current_length = len(current_entry.split())
+            next_length = len(texts[i].split())
+            
+            if current_length + next_length <= 20:  # Adjust the threshold as needed
+                current_entry += " " + texts[i]
+            else:
+                combined_sentences.append(current_entry.strip())
+                current_entry = texts[i]
+
+        # Add the last entry if there is any
+        if current_entry:
+            combined_sentences.append(current_entry.strip())
+        texts = combined_sentences
+
+        #logger.debug(f"Reader.main.process_text(): {texts = }")
         
         # Save an id to identify the group of message sent to the ui
         group_id = uuid.uuid4()
@@ -362,9 +428,9 @@ def process_text(
                 # If next chunk is empty (the result of splitting a ..)
                 if texts[chunk_index + 1] == "":
                     # TODO: Move to config
-                    pause_length = 0.3
-                else:
                     pause_length = 0.15
+                else:
+                    pause_length = 0.05
             #logging.debug(f"main.tts({chunk = })")
 
             # Determine if should add a click on or off noise to the audio chunk
@@ -380,20 +446,12 @@ def process_text(
                                     )
             
             # Check read speed
-            read_speed, read_length = get_read_speed(chunk, wav)
-            logger.debug(f"Reader.process_text(): {read_speed =  :.2f}")
-
-            # Set a lower bound on read speed, when the words per second are below this level there is a problem.
-            read_speed_lower_threshold = 1.5
-            # Set an upper bound. Often when the model skips words the read_speed will be too high.
-            read_speed_upper_threshold = 2.35
-            
-            # Try fixing read speed with simple speed up
-            wav, read_speed = adjust_read_speed(wav, chunk, read_speed)
+            read_speed, read_length = voice.get_read_speed(chunk, wav)
+            logger.debug(f"Reader.process_text(): init {read_speed =  :.2f}")
 
             # If read speed is outside valid range
-            if should_retry and (read_speed < 1.35 or read_speed > read_speed_upper_threshold):
-                logger.warning(f"Reader.process_text(): Bad read speed detected")
+            if should_retry and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+                logger.warning(f"Reader.process_text(): Bad read speed detected : {read_speed =}")
                 init_speaker_wav = copy(voice.speaker_wav)
                 # Save initial and subsequent reads along with their read speed
                 all_reads = [
@@ -406,9 +464,14 @@ def process_text(
                 # TODO: Change params on each try to give a better shot of producing valid output
                 retry_attempt = 1
                 retry_attempts = 3
-                while retry_attempt <= retry_attempts and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+                while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+                    if retry_attempt <= retry_attempts: 
+                        break
+                    if retry_attempt < len(init_speaker_wav): 
+                        break 
                     logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
-                    voice.speaker_wav = audio_samples[retry_attempt]
+                    # Select a different set of speaker wavs
+                    voice.speaker_wav = init_speaker_wav[retry_attempt]
                     # Get audio output from TTS
                     wav, rate, wavs = voice.read_text(
                                         chunk, 
@@ -417,9 +480,7 @@ def process_text(
                                         speed=speed
                                     )
                     
-                    read_speed, read_length = get_read_speed(text = chunk, wav = wav)
-                    # Try fixing read speed with simple speed up
-                    wav, read_speed = adjust_read_speed(wav, chunk, read_speed)
+                    read_speed, read_length = voice.get_read_speed(text = chunk, wav = wav)
                     # Save read
                     all_reads.append(
                         {
@@ -434,13 +495,20 @@ def process_text(
                 # Find the best read speed in each generated sample
                 logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
                 best_read_speed = -1
-                best_wav = []
+                best_read_index = -1
                 for read_index in range(len(all_reads)):
                     read_speed = all_reads[read_index]["read_speed"]
                     if read_speed > best_read_speed and read_speed < read_speed_upper_threshold:
                         best_read_speed = read_speed
-                        best_wav = all_reads[read_index]["wav"]
-                wav = best_wav
+                        best_read_index = read_index
+                # If found a wav that met criteria
+                if best_read_index != -1:
+                    logger.debug(f"Reader.process_text(): Best wav on {read_index = } with {best_read_speed =}")
+                    wav = all_reads[best_read_index]["wav"]
+                else:
+                    logger.debug(f"Reader.process_text(): None of the reads met criteria")
+
+
                 # Reset back to original speaker wav
                 voice.speaker_wav = init_speaker_wav
                 
@@ -481,7 +549,7 @@ def process_text(
                     is_last_chunk = True
 
                 response_time = time.time()
-                logger.debug(f"Reader.main.process_text(): {response_time =}")
+                #logger.debug(f"Reader.main.process_text(): {response_time =}")
                 if is_push_to_redis:
                     redis_msg = json.dumps({
                                             "data": json_wav, 
@@ -525,20 +593,12 @@ def process_text(
         
 
         # Check read speed
-        read_speed, read_length = get_read_speed(text, wav)
-
-        logger.debug(f"Reader.process_text(): {read_speed = }")
-
-        # Set a lower bound on read speed, when the words per second are below this level there is a problem.
-        read_speed_lower_threshold = 1.54
-        # Set an upper bound. Often when the model skips words the read_speed will be too high.
-        read_speed_upper_threshold = 2.35
-        
-        # Try fixing read speed with simple speed up
-        wav, read_speed = adjust_read_speed(wav, text, read_speed)
+        read_speed, read_length = voice.get_read_speed(text, wav)
 
         # If read speed is outside valid range
-        if should_retry and (read_speed < 1.35 or read_speed > read_speed_upper_threshold):
+        if should_retry and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+            # Save initial list of speakers
+            init_speaker_wav = copy(voice.speaker_wav)
             logger.warning(f"Reader.process_text(): Slow read speed detected")
             # Save initial and subsequent reads along with their read speed
             all_reads = [
@@ -553,8 +613,8 @@ def process_text(
             retry_attempts = 3
             while retry_attempt <= retry_attempts and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
                 logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
-                init_speaker_wav = copy(voice.speaker_wav)
-                voice.speaker_wav = audio_samples[retry_attempt]
+                # Select an individual audio sample
+                voice.speaker_wav = init_speaker_wav[retry_attempt]
                 retry_attempt += 1
                 wav, rate, wavs = voice.read_text(
                                     text, 
@@ -563,9 +623,9 @@ def process_text(
                                     speed=speed
                                 )
                 
-                read_speed, read_length = get_read_speed(text = text, wav = wav)
+                read_speed, read_length = voice.get_read_speed(text = text, wav = wav)
                 # Try fixing read speed with simple speed up
-                wav, read_speed = adjust_read_speed(wav, text, read_speed)
+                wav, read_speed = voice.adjust_read_speed(wav, text, read_speed)
                 logger.debug(f"Reader.process_text(): {read_speed = :.2f}")
                 # Save read
                 all_reads.append(
@@ -579,16 +639,17 @@ def process_text(
             logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
             best_read_speed = -1
             best_read_index = -1
-            best_wav = []
             for read_index in range(len(all_reads)):
                 read_speed = all_reads[read_index]["read_speed"]
                 if read_speed > best_read_speed and read_speed < read_speed_upper_threshold:
-                    best_read_index = read_index
                     best_read_speed = read_speed
-                    best_wav = all_reads[read_index]["wav"]
-                
-            logger.debug(f"Reader.process_text(): Selecting best read speed = {best_read_speed :.2f} from sample {best_read_index}")
-            wav = best_wav
+                    best_read_index = read_index
+            # If found a wav that met criteria
+            if best_read_index != -1:
+                logger.debug(f"Reader.process_text(): Best wav on {read_index = } with {best_read_speed =}")
+                wav = all_reads[best_read_index]["wav"]
+            else:
+                logger.debug(f"Reader.process_text(): None of the reads met criteria")
             # Reset back to original speaker wav
             voice.speaker_wav = init_speaker_wav
         
@@ -615,7 +676,7 @@ def process_text(
 
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
-        logger.debug(f"Reader.main.process_text(): {response_time = :.2f}")
+        #logger.debug(f"Reader.main.process_text(): {response_time = :.2f}")
         if is_push_to_redis:
             redis_msg = json.dumps({
                                     "data": json_wav, 
