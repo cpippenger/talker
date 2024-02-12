@@ -19,7 +19,7 @@
 	  crossorigin="anonymous"></script>
   	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js" integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+" crossorigin="anonymous"></script>
 	<script>
-
+		var  global_last_seen =null;
 		request_mutex=false;
 		function mark_seen(element) {
 			element.parentNode.parentNode.classList.remove('not_played');
@@ -31,24 +31,35 @@
 			});
 		}
 		
-		function get_superchats() {
-			  $.ajax({url: "/get_super_chats", success: function(result){
+		function get_superchats(last_seen) {
+			if(last_seen != null)
+			{
+				since_str="?last_seen="+last_seen;
+			} else {
+				since_str="";
+			}
+			  $.ajax({url: "/get_super_chats"+since_str, success: function(result){
 			  super_chats=JSON.parse(result);
-			  output=$("#superchats").html();
+			  output="";
 				for ( key in super_chats) {
 					output=output+"\n<div class='row not_played border-top-3' ><div class='col-sm' ><p class='mt-4' >"+super_chats[key]["username"]+" - "+super_chats[key]["amount"]+" - "+super_chats[key]["text"] + "</p></div><div class='col-sm'><audio onended='mark_seen(this)' class='mt-1' controls ><source src=cache/" + super_chats[key]["id"] + "> </audio></div></div>";
-
+					global_last_seen=super_chats[key]["datetime_uploaded"]
 				}
-				$("#superchats").html(output);
+				$("#superchats").append(output);
 				}});
+
 		}
+
+		function zpad (str, max) {
+		  str = str.toString();
+		  return str.length < max ? zpad("0" + str, max) : str;
+		}
+
 		$(document).ready(function() {
-				get_superchats();
-				/* this needs since last seen in call
+				get_superchats(null);
 				const interval = setInterval(function() {
-				   get_superchats();
-				   console.log("polled");
-				 }, 5000);*/
+				   get_superchats(global_last_seen);
+				 }, 5000);
 				
 			});
 	</script>

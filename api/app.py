@@ -77,9 +77,13 @@ def insert_super_chats():
     else:
         return '{"status":"failed"}'
         
-@app.route('/get_super_chats')
+@app.route('/get_super_chats', methods=['GET'])
 def get_super_chats():
-    statement = select(SuperChat)
+    last_seen = request.args.get('last_seen') # 2024-02-12 08:33:05
+    if last_seen != None:
+        statement = select(SuperChat).where(SuperChat.datetime_uploaded > last_seen ).order_by(SuperChat.datetime_uploaded.asc())
+    else:
+        statement = select(SuperChat).order_by(SuperChat.datetime_uploaded.asc())
     rows = session.execute(statement).all()
     output = []
     if len(rows) == 0:
