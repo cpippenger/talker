@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SuperChat Log</title>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+	<style>
+	
+
+	
+	.not_played {
+		color:white;
+		background-color:green;
+	}
+	</style>
+	<script
+	  src="https://code.jquery.com/jquery-3.7.1.min.js"
+	  integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo="
+	  crossorigin="anonymous"></script>
+  	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js" integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+" crossorigin="anonymous"></script>
+	<script>
+
+		request_mutex=false;
+		function mark_seen(element) {
+			element.parentNode.parentNode.classList.remove('not_played');
+		}
+		
+		function play_unseen(){
+			$('.not_played').each(function(i, obj) {
+				$(obj).find( "audio" )[0].play()
+			});
+		}
+		
+		function get_superchats() {
+			  $.ajax({url: "/get_super_chats", success: function(result){
+			  super_chats=JSON.parse(result);
+			  output=$("#superchats").html();
+				for ( key in super_chats) {
+					output=output+"\n<div class='row not_played border-top-3' ><div class='col-sm' ><p class='mt-4' >"+super_chats[key]["username"]+" - "+super_chats[key]["amount"]+" - "+super_chats[key]["text"] + "</p></div><div class='col-sm'><audio onended='mark_seen(this)' class='mt-1' controls ><source src=cache/" + super_chats[key]["id"] + "> </audio></div></div>";
+
+				}
+				$("#superchats").html(output);
+				}});
+		}
+		$(document).ready(function() {
+				get_superchats();
+				/* this needs since last seen in call
+				const interval = setInterval(function() {
+				   get_superchats();
+				   console.log("polled");
+				 }, 5000);*/
+				
+			});
+	</script>
+</head>
+<body>
+<div class="container w-100  my-1">
+	<div class="row">
+		<div class='col-sm text-left' > <h3>TTS Reader</h3> </div>
+		<div class='col-sm ' > 
+
+				<button class="btn btn-outline-secondary" type="button"  onclick="play_unseen()" >Play TTS</button>
+
+		</div>
+	</div>
+</div>
+<div class="container w-75" id="superchats"></div>
+</body>
+</html>
