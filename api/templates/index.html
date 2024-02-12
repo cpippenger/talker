@@ -23,14 +23,28 @@
 
 
 		function play_next(element){
-			element.parentNode.parentNode.classList.remove('not_played');
+			parent=element.parentNode.parentNode;
+			parent.classList.remove('not_played');
+			localStorage.setItem(parent.id, Date.now());
 			play_unseen();
 		}
 		
-
+		function toggle_autoplay(){
+			
+			if( $('#autoplay').text() ==  "Auto Play: On" )
+			{
+				$('#autoplay').text("Auto Play: Off");
+			} else {
+				play_unseen();
+				$('#autoplay').text("Auto Play: On");
+			}
+			
+		}
 		
 		function play_unseen(){
-			$($('.not_played')[0]).find('audio')[0].play();
+		element=$('.not_played')
+		if(element[0])
+			$(element[0]).find('audio')[0].play();
 		}
 		
 		function get_superchats(last_seen) {
@@ -44,11 +58,20 @@
 			  super_chats=JSON.parse(result);
 			  output="";
 				for ( key in super_chats) {
-					output=output+"\n<div class='row not_played border-top-3' ><div class='col-sm' ><p class='mt-4' >"+super_chats[key]["username"]+" - "+super_chats[key]["amount"]+" - "+super_chats[key]["text"] + "</p></div><div class='col-sm'><audio onended='play_next(this)' class='mt-1' controls ><source src=cache/" + super_chats[key]["id"] + "> </audio></div></div>";
+					if(localStorage.getItem(super_chats[key]["id"]) == null){
+						css_classname="not_played";
+					} else {
+						css_classname="";
+					};
+					output=output+"\n<div id='"+ super_chats[key]["id"] + "' class='row "+css_classname+" border-top-3' ><div class='col-sm' ><p class='mt-4' >"+super_chats[key]["username"]+" - "+super_chats[key]["amount"]+" - "+super_chats[key]["text"] + "</p></div><div class='col-sm'><audio onended='play_next(this)' class='mt-1' controls ><source src=cache/" + super_chats[key]["id"] + "> </audio></div></div>";
 					global_last_seen=super_chats[key]["datetime_uploaded"]
+					
 				}
 				$("#superchats").append(output);
 				}});
+				if($('#autoplay').text() ==  "Auto Play: On"){
+					play_unseen();
+				}
 
 		}
 
@@ -72,7 +95,7 @@
 		<div class='col-sm text-left' > <h3>TTS Reader</h3> </div>
 		<div class='col-sm ' > 
 
-				<button class="btn btn-outline-secondary" type="button"  onclick="play_unseen()" >Play TTS</button>
+				<button class="btn btn-outline-secondary" type="button"  onclick="play_unseen()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><span class=mx-auto>
 
 		</div>
 	</div>
