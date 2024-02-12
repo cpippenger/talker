@@ -15,7 +15,8 @@ from sqlalchemy.sql import text
 from datetime import datetime
 # User imports
 from models.super_chat import SuperChat
-
+import numpy as np
+from scipy.io.wavfile import write
 # Logging config
 logging.basicConfig(
     #filename='DockProc.log',
@@ -39,7 +40,7 @@ DATABASE_HOST = os.environ.get('DATABASE_HOST',"127.0.0.1")
 SERVICE_PORT = os.environ.get('SERVICE_PORT',5000)
 SERVICE_HOST = os.environ.get('SERVICE_HOST',"0.0.0.0")
 SERVICE_DEBUG = os.environ.get('SERVICE_DEBUG','True')
-TTS_URL=os.environ.get('TTS_URL',"http://localhost:6666/api/tts?text=")
+TTS_URL=os.environ.get('TTS_URL',"http://localhost:8100/tts")
 
 app = Flask(__name__,static_folder="cache")
 app.config['SQLALCHEMY_DATABASE_URI'] = f'{DATABASE_TYPE}://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@{DATABASE_HOST}/{DATABASE_SCHEMA}'
@@ -51,8 +52,11 @@ session = SessionClass()
 
 # this will get replaced with real code later
 def save_tts(message,filename):
-    r = requests.get(TTS_URL + message, allow_redirects=True)
-    open(filename, 'wb').write(r.content)
+    payload = {'text': message, 'time': 'time', 'priority' : '100.0'}
+    r = requests.post(TTS_URL, data=json.dumps(payload))
+    data=r.json()["wav"]
+    scaled = np.int16(data / np.max(np.abs(data)) * 32767)
+    write(filename, int(r.json()["rate"]), scaled)
     return None
 
 def install():
