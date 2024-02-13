@@ -112,6 +112,8 @@ data_folder = "data"
 #for file in os.listdir("data/"):
 #    if file.endswith(".wav"):
 
+# TODO: Creat a more robust voice management system
+
 voice_catalogue = {
     "major" : [
         ["data/major/major_11.wav","data/major/major_12.wav","data/major/major_13.wav","data/major/major_2_02.wav"],
@@ -465,9 +467,9 @@ def process_text(
                 retry_attempt = 1
                 retry_attempts = 3
                 while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                    if retry_attempt <= retry_attempts: 
+                    if retry_attempt > retry_attempts: 
                         break
-                    if retry_attempt < len(init_speaker_wav): 
+                    if retry_attempt >= len(init_speaker_wav): 
                         break 
                     logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
                     # Select a different set of speaker wavs
@@ -514,7 +516,7 @@ def process_text(
                 
                 # If still has a bad read speed
                 if read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold:
-                    logger.error(f"Reader.process_text(): Could not generate valid audio for {text = }")
+                    logger.error(f"Reader.process_text(): Could not generate valid audio for {chunk = }")
                     #continue
 
 
@@ -611,7 +613,11 @@ def process_text(
             # TODO: Change params on each try to give a better shot of producing valid output
             retry_attempt = 1
             retry_attempts = 3
-            while retry_attempt <= retry_attempts and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+            while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+                if retry_attempt > retry_attempts: 
+                    break
+                if retry_attempt >= len(init_speaker_wav): 
+                    break 
                 logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
                 # Select an individual audio sample
                 voice.speaker_wav = init_speaker_wav[retry_attempt]
