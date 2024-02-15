@@ -41,7 +41,9 @@
 			  $( this ).addClass( "not_selected" );
 			});
 
-			$('#player_source')[0].src = "/cache/" + element.id;
+			//$('#player_source')[0].src = "/cache/" + element.id;
+			console.log(element.getAttribute('tts_file'));
+			$('#player_source')[0].src = element.getAttribute('tts_file');
 			$(element).removeClass('bg-info');
 			$(element).removeClass('not_selected');
 			$(element).addClass('selected');
@@ -124,22 +126,31 @@
 					row = document.createElement("div");
 					row.classList.add("row", "bg-info", "border-top-3", "rounded-5","my-3");
 					row.id=super_chats[key]["id"];
-					row.onclick = function ()
+					error_string=""
+					if(/^ERROR:/.test(super_chats[key]["tts_file"])) // this is jank, need better
 					{
-						play(this);
+						$(row).removeClass("bg-info");
+						$(row).addClass("bg-warning")
+						error_string=" (TTS ERROR: " + super_chats[key]["tts_file"] + ")"
+						
+					} else {
+						row.onclick = function ()
+						{
+							play(this);
+						}
+						row.setAttribute("tts_file",super_chats[key]["tts_file"]);
 					}
 					sm_col = document.createElement("div");
-					sm_col.classList.add("col-sm");
-					
+					sm_col.classList.add("col-sm");					
 					p = document.createElement("p");
 					p.classList.add("p-3","m-0");
-					$(p).text(super_chats[key]["text"])
-					
-					row.appendChild(sm_col)
-					sm_col.appendChild(p)
+					$(p).text(super_chats[key]["text"] + error_string);					
+
+					row.appendChild(sm_col);
+					sm_col.appendChild(p);
 					document.getElementById('superchats').appendChild(row);
 					
-					global_last_seen=super_chats[key]["datetime_uploaded"]
+					global_last_seen=super_chats[key]["datetime_uploaded"];
 					if(global_autoplay == true) {
 						global_queue.push(super_chats[key]["id"]);
 					}

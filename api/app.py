@@ -47,17 +47,30 @@ app.config['SQLALCHEMY_DATABASE_URI'] = f'{DATABASE_TYPE}://{DATABASE_USERNAME}:
 db = SQLAlchemy(app)
 engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
 
+
+
+
+
+
 SessionClass = sessionmaker(bind=engine)
-session = SessionClass()
+#session = SessionClass()
 
 # this will get replaced with real code later
 def save_tts(message,filename):
-    payload = {'text': message, 'time': 'time', 'priority' : '100.0'}
-    r = requests.post(TTS_URL, data=json.dumps(payload))
-    data=r.json()["wav"]
-    scaled = np.int16(data / np.max(np.abs(data)) * 32767)
-    write(filename, int(r.json()["rate"]), scaled)
-    return None
+
+    try:
+        r = requests.get(TTS_URL + message, allow_redirects=True)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        return ("ERROR: OOps: Something Else") # being lazy this code sorta works
+    except requests.exceptions.HTTPError as errh:
+        return ("ERROR: Http Error:",errh)
+    except requests.exceptions.ConnectionError as errc:
+        return ("ERROR: Error Connecting:")
+    except requests.exceptions.Timeout as errt:
+        return ("ERROR: Timeout Error:")     
+    open(filename, 'wb').write(r.content)
+    return filename
 
 def install():
     try:
@@ -71,27 +84,34 @@ async def root():
 
 @app.route('/insert_super_chat', methods=['POST'])
 def insert_super_chats():
+    session = SessionClass()
     uuid=str(uuid4())
     data = request.json
     username=data.get('username')
     text=data.get('text')
     amount=data.get('amount')
     if username != None and text != None and amount != None:
-        save_tts(username + " says " + text,"cache/" + uuid )
-        session.add(SuperChat(id=uuid,username=username,text=text,amount=amount,datetime_uploaded=datetime.now()))   
+        
+        cache_file=save_tts(username + " says " + text,"cache/" + uuid )
+        
+        session.add(SuperChat(id=uuid,username=username,text=text,amount=amount,datetime_uploaded=datetime.now(),tts_file=cache_file))   
         session.commit()
+        session.close()
         return '{"status":"success"}'
     else:
+        session.close()
         return '{"status":"failed"}'
         
 @app.route('/get_super_chats', methods=['GET'])
 def get_super_chats():
+    session = SessionClass()
     last_seen = request.args.get('last_seen') # 2024-02-12 08:33:05
     if last_seen != None:
         statement = select(SuperChat).where(SuperChat.datetime_uploaded > last_seen ).order_by(SuperChat.datetime_uploaded.asc())
     else:
         statement = select(SuperChat).order_by(SuperChat.datetime_uploaded.asc())
     rows = session.execute(statement).all()
+    session.close()
     output = []
     if len(rows) == 0:
         logger.warning(f"get_super_chats(): No results found.")
