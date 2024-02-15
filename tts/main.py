@@ -203,10 +203,18 @@ async def test():
     """
     Test pushing an audio file to the redis queue.
     """
-    logger.debug(f"MessageQueue.chirp()")
+    logger.debug(f"TTS.chirp()")
     output = np.hstack((voice.click_on, voice.click_off))
     push_to_queue(output)
     return {"message": "Chirpped", "wav": json.dumps(output.tolist()), "rate" : str(24000)}
+
+@app.get("/get_voice_list/")
+async def test():
+    """
+    Test return list of available voices.
+    """
+    logger.debug(f"TTS.get_voice_list()")
+    return json.dumps(list(voice_catalogue.keys()))
 
 
 @app.post("/set-config/")
@@ -467,10 +475,7 @@ def process_text(
                 retry_attempt = 1
                 retry_attempts = 3
                 while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                    if retry_attempt > retry_attempts: 
-                        break
-                    if retry_attempt >= len(init_speaker_wav): 
-                        break 
+                    
                     logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
                     # Select a different set of speaker wavs
                     voice.speaker_wav = init_speaker_wav[retry_attempt]
@@ -493,6 +498,10 @@ def process_text(
 
                     logger.debug(f"Reader.process_text(): {read_speed =  :.2f}")
                     retry_attempt += 1
+                    if retry_attempt > retry_attempts: 
+                        break
+                    if retry_attempt >= len(init_speaker_wav): 
+                        break 
 
                 # Find the best read speed in each generated sample
                 logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
@@ -583,8 +592,6 @@ def process_text(
         # Normalize
         wav = voice.normalize(wav)
 
-        return wav
-
     # Else just run the full text
     else:
         logger.debug(f"Reader.main.process_text(): Running full message")
@@ -614,14 +621,11 @@ def process_text(
             retry_attempt = 1
             retry_attempts = 3
             while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                if retry_attempt > retry_attempts: 
-                    break
-                if retry_attempt >= len(init_speaker_wav): 
-                    break 
+                
                 logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
                 # Select an individual audio sample
                 voice.speaker_wav = init_speaker_wav[retry_attempt]
-                retry_attempt += 1
+                
                 wav, rate, wavs = voice.read_text(
                                     text, 
                                     is_add_start_click=False, 
@@ -640,6 +644,11 @@ def process_text(
                         "wav" : wav
                     }
                 )
+                retry_attempt += 1
+                if retry_attempt > retry_attempts: 
+                    break
+                if retry_attempt >= len(init_speaker_wav): 
+                    break 
             
             # Find the best read speed in each generated sample
             logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
@@ -703,8 +712,13 @@ def process_text(
                     logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
             except redis.exceptions.ConnectionError:
                 logger.error(f"Reader.main.process_text(): Error sending response to redis")
-            
-        return wav
+        
+
+    #run_log = {
+    #    "id" : uuid4()
+    #}
+
+    return wav
 
 
 def run_background_task(text: str):
