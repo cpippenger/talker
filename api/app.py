@@ -92,9 +92,9 @@ def coq_tts(message,filename):
 
 endpoints={}
 #will do this right later
-#r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
-#for voice in json.loads(r.json()):
-#        endpoints["swc_"+voice] = lambda str_message,str_filename: swc_tts(voice,str_message,str_filename)
+r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
+for voice in json.loads(r.json()): # this is double encoding from the tts box
+        endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
 
 # - all endpoints must return path to tts file, like cache/<id>
 # - return string that starts with ERROR on error 
@@ -105,9 +105,9 @@ endpoints={}
 # - must be at least one end point
 
 endpoints.update( {
-    "swc_major": lambda str_message,str_filename: swc_tts("major",str_message,str_filename) ,
-    "swc_dsp": lambda str_message,str_filename: swc_tts("dsp",str_message,str_filename) ,
-    "swc_trump": lambda str_message,str_filename: swc_tts("trump",str_message,str_filename) ,  
+    #"swc_major": lambda str_message,str_filename: swc_tts("major",str_message,str_filename) ,
+    #"swc_dsp": lambda str_message,str_filename: swc_tts("dsp",str_message,str_filename) ,
+    #"swc_trump": lambda str_message,str_filename: swc_tts("trump",str_message,str_filename) ,  
     "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
     "fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
     "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
