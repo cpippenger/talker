@@ -42,6 +42,7 @@
 			});
 
 			//$('#player_source')[0].src = "/cache/" + element.id;
+			localStorage.setItem(element.id, Date.now());
 			console.log(element.getAttribute('tts_file'));
 			$('#player_source')[0].src = element.getAttribute('tts_file');
 			$(element).removeClass('bg-info');
@@ -116,15 +117,16 @@
 			  super_chats=JSON.parse(result);
 			  output="";
 				for ( key in super_chats) {
-					if(localStorage.getItem(super_chats[key]["id"]) == null){
-						css_classname="not_played";
-					} else {
-						css_classname="";
-					};
+
 					console.log(super_chats[key]["id"]);
 					
 					row = document.createElement("div");
-					row.classList.add("row", "bg-info", "border-top-3", "rounded-5","my-3");
+					row.classList.add("row", "border-top-3", "rounded-5","my-3");
+					if(localStorage.getItem(super_chats[key]["id"]) == null){
+						row.classList.add('bg-info')
+					} else {
+						row.classList.add('not_selected') // need to get the naming convention standard evrywhere
+					};
 					row.id=super_chats[key]["id"];
 					error_string=""
 					if(/^ERROR:/.test(super_chats[key]["tts_file"])) // this is jank, need better

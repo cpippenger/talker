@@ -149,7 +149,7 @@ async def update_default():
     # not sure if this is good
     global current_endpoint
     endpoint= request.args.get('name')
-    if endpoint != None:
+    if endpoint != None and endpoint in endpoints.keys():
         current_endpoint=endpoint     
         return '{"status":"ok"}'
     else:
