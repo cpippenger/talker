@@ -13,6 +13,7 @@ from sqlalchemy.engine import URL
 from sqlalchemy import select
 from sqlalchemy.sql import text
 from datetime import datetime
+import tempfile
 # User imports
 from models.super_chat import SuperChat
 import numpy as np
@@ -90,11 +91,6 @@ def coq_tts(message,filename):
 
 
 
-endpoints={}
-#will do this right later
-r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
-for voice in json.loads(r.json()): # this is double encoding from the tts box
-        endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
 
 # - all endpoints must return path to tts file, like cache/<id>
 # - return string that starts with ERROR on error 
@@ -104,15 +100,23 @@ for voice in json.loads(r.json()): # this is double encoding from the tts box
 # - prefered to prefix file name with static id of source e.g coqtts_<id>
 # - must be at least one end point
 
-endpoints.update( {
-    #"swc_major": lambda str_message,str_filename: swc_tts("major",str_message,str_filename) ,
-    #"swc_dsp": lambda str_message,str_filename: swc_tts("dsp",str_message,str_filename) ,
-    #"swc_trump": lambda str_message,str_filename: swc_tts("trump",str_message,str_filename) ,  
+#endpoints={}
+#will do this right later
+def get_swc_enpoints():
+    new_endpoints={}
+    r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
+    for voice in json.loads(r.json()): # this is double encoding from the tts box
+            new_endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
+            new_endpoints.update({
     "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
     "fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
     "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
-})
-current_endpoint="swc_trump" 
+    })
+    return new_endpoints
+endpoints=get_swc_enpoints()
+
+current_endpoint="swc_trump"# hardcoded for now, not sure what to do about this,
+                            # was using the first of the array
 def install():
     try:
         SuperChat.__table__.create(engine)
@@ -122,6 +126,23 @@ def install():
 @app.get("/")
 async def root():
     return render_template('index.html',endpoints=endpoints.keys(),current_endpoint=current_endpoint)
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    global endpoints
+    # check if the post request has the file part
+    if 'file' not in request.files:
+        return '{"status":"MISSING FILE"}'
+    else:
+        file = request.files['file']
+        temp_filename=tempfile.NamedTemporaryFile()  ;
+        file.save(temp_filename)
+        files={'file': (file.filename, temp_filename)}
+        r=requests.post(SWC_TTS_URL.replace('tts','upload'),files=files)
+        endpoints=get_swc_enpoints()
+        return r.content
+    
+
 
 @app.get("/update-default")
 async def update_default():

@@ -202,7 +202,9 @@ $( document ).ready(function() {
   </select>
   <label for="floatingSelect">Default Voice</label>
 </div>
-<button class="btn btn-outline-secondary" type="button"  onclick="play_tts ()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><span class=mx-auto>
+<button class="btn btn-outline-secondary" type="button"  onclick="play_tts ()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#uploadZip">
+  uploadZip
+</button>
       </div>
     </header>
   </div>
@@ -218,5 +220,23 @@ $( document ).ready(function() {
 <div class="container w-75" id="superchats">
 
 </div>
+
+
+<!-- Modal -->
+<div class="modal fade" id="uploadZip" tabindex="-1" role="dialog"  aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+
+      <div class="modal-body">
+       <p> Upload zip file of wavs</p>
+	   <form  enctype="multipart/form-data" action="/upload" method=post >
+	   <input name="file" type="file" accept=".zip" />
+	   <input type="submit" />
+      </div>
+
+    </div>
+  </div>
+</div>
+
 </main>
 </html>
