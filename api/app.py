@@ -40,38 +40,68 @@ DATABASE_HOST = os.environ.get('DATABASE_HOST',"127.0.0.1")
 SERVICE_PORT = os.environ.get('SERVICE_PORT',5000)
 SERVICE_HOST = os.environ.get('SERVICE_HOST',"0.0.0.0")
 SERVICE_DEBUG = os.environ.get('SERVICE_DEBUG','True')
-TTS_URL=os.environ.get('TTS_URL',"http://localhost:8100/tts")
+SWC_TTS_URL=os.environ.get('SWC_TTS_URL',"http://localhost:8100/tts")
+COQ_TTS_URL=os.environ.get('COQ_TTS_URL',"http://localhost:6666/api/tts?text=")
 
 app = Flask(__name__,static_folder="cache")
 app.config['SQLALCHEMY_DATABASE_URI'] = f'{DATABASE_TYPE}://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@{DATABASE_HOST}/{DATABASE_SCHEMA}'
 db = SQLAlchemy(app)
 engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
-
-
-
-
-
-
 SessionClass = sessionmaker(bind=engine)
-#session = SessionClass()
 
-# this will get replaced with real code later
-def save_tts(message,filename):
 
+# im gonna clean up the exception handling once i figure out what exceptions are what, seems weird
+# cuz the repeated code is nasty
+def swc_tts(str_voice,str_message,str_filename):
+    payload = {'text': str_message, 'time': 'time', 'priority' : '100.0'}
     try:
-        r = requests.get(TTS_URL + message, allow_redirects=True)
+        r = requests.post(SWC_TTS_URL, json=payload)
         r.raise_for_status()
     except requests.exceptions.RequestException as err:
-        return ("ERROR: OOps: Something Else") # being lazy this code sorta works
+        return ("ERROR: swc_tts OOps: Something Else") # being lazy this code sorta works
     except requests.exceptions.HTTPError as errh:
-        return ("ERROR: Http Error:",errh)
+        return ("ERROR: swc_tts Http Error:",errh)
     except requests.exceptions.ConnectionError as errc:
-        return ("ERROR: Error Connecting:")
+        return ("ERROR: swc_tts Error Connecting:")
     except requests.exceptions.Timeout as errt:
-        return ("ERROR: Timeout Error:")     
+        return ("ERROR: swc_tts Timeout Error:")     
+    open(filename, 'wb').write(r.content)    
+    data=r.json()["wav"]
+    scaled = np.int16(data / np.max(np.abs(data)) * 32767)
+    write(str_filename, int(r.json()["rate"]), scaled)
+    return str_filename
+
+def coq_tts(message,filename):
+    try:
+        r = requests.get(COQ_TTS_URL + message, allow_redirects=True)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        return ("ERROR: coq_tts OOps: Something Else") # being lazy this code sorta works
+    except requests.exceptions.HTTPError as errh:
+        return ("ERROR: coq_tts Http Error:",errh)
+    except requests.exceptions.ConnectionError as errc:
+        return ("ERROR: coq_tts Error Connecting:")
+    except requests.exceptions.Timeout as errt:
+        return ("ERROR: coq_tts Timeout Error:")     
     open(filename, 'wb').write(r.content)
     return filename
 
+# - all endpoints must return path to tts file, like cache/<id>
+# - return string that starts with ERROR on error 
+# - can return an external url if it wants, but probably shouldnt, path
+#   is passed strait to audio src
+# - should be storing in /cache for playback
+# - prefered to prefix file name with static id of source e.g coqtts_<id>
+# - must be at least one end point
+# - default is first defined endpoint in dictionary
+
+endpoints = {
+"coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
+"fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
+"forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
+
+}
+current_endpoint=list(endpoints.keys())[0] 
 def install():
     try:
         SuperChat.__table__.create(engine)
@@ -80,10 +110,22 @@ def install():
 
 @app.get("/")
 async def root():
-    return render_template('index.html')
+    return render_template('index.html',endpoints=endpoints.keys(),current_endpoint=current_endpoint)
+
+@app.get("/update-default")
+async def update_default():
+    # not sure if this is good
+    global current_endpoint
+    endpoint= request.args.get('name')
+    if endpoint != None:
+        current_endpoint=endpoint     
+        return '{"status":"ok"}'
+    else:
+        return '{"status":"failed"}'
 
 @app.route('/insert_super_chat', methods=['POST'])
 def insert_super_chats():
+    logger.warning(current_endpoint)
     session = SessionClass()
     uuid=str(uuid4())
     data = request.json
@@ -91,10 +133,9 @@ def insert_super_chats():
     text=data.get('text')
     amount=data.get('amount')
     if username != None and text != None and amount != None:
-        
-        cache_file=save_tts(username + " says " + text,"cache/" + uuid )
-        
-        session.add(SuperChat(id=uuid,username=username,text=text,amount=amount,datetime_uploaded=datetime.now(),tts_file=cache_file))   
+        #cache_file=save_tts(username + " says " + text,"cache/" + uuid )
+        cache_file=endpoints[current_endpoint](username + " says " + text,"cache/" + uuid )
+        session.add(SuperChat(id=uuid,username=username,text=current_endpoint + " | " + amount + " | " + username + " - " +text,amount=amount,datetime_uploaded=datetime.now(),tts_file=cache_file))   
         session.commit()
         session.close()
         return '{"status":"success"}'

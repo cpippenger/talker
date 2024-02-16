@@ -131,7 +131,7 @@
 					{
 						$(row).removeClass("bg-info");
 						$(row).addClass("bg-warning")
-						error_string=" (TTS ERROR: " + super_chats[key]["tts_file"] + ")"
+						error_string=" (" + super_chats[key]["tts_file"] + ")"
 						
 					} else {
 						row.onclick = function ()
@@ -168,8 +168,11 @@
 
 		}
 		
-		
-
+	function update_default(element)
+		{
+			$.ajax({url: "/update-default?name="+element.options[element.selectedIndex].text});
+			
+		}
 $( document ).ready(function() {
     get_superchats(null);
 				const interval = setInterval(function() {
@@ -188,14 +191,26 @@ $( document ).ready(function() {
         <span class="fs-4">TTS Reader</span>
       </a>
 
-      <div class="nav">
-			<button class="btn btn-outline-secondary" type="button"  onclick="play_tts ()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><span class=mx-auto>
+      <div class="nav col-lg-7">
+	  
+<div class="form-floating col-sm-5">
+  <select  onchange="update_default(this);" class="form-select form-select" id="floatingSelect" aria-label="Floating label select example">
+{% for item in endpoints %}   
+    <option {% if item == current_endpoint %} selected  {% endif %} >{{ item|safe }} </option>
+{% endfor %}
+
+  </select>
+  <label for="floatingSelect">Default Voice</label>
+</div>
+<button class="btn btn-outline-secondary" type="button"  onclick="play_tts ()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><span class=mx-auto>
       </div>
     </header>
   </div>
   
+   
   <div class="container w-100  my-1">
 <div class="row">
+
 <audio id=player  controls  onplay="player_play(this)" onpause="player_pause(this)" onended="player_end(this)" ><source id=player_source src="" ></audio>
 </div>
 </div>
