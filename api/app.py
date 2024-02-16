@@ -60,7 +60,7 @@ def swc_tts(str_voice,str_message,str_filename):
         r = requests.post(SWC_TTS_URL, json=payload)
         r.raise_for_status()
     except requests.exceptions.RequestException as err:
-        return ("ERROR: swc_tts OOps: Something Else") # being lazy this code sorta works
+        return ("ERROR: " + str(err)) # being lazy this code sorta works
     except requests.exceptions.HTTPError as errh:
         return ("ERROR: swc_tts Http Error:",errh)
     except requests.exceptions.ConnectionError as errc:
@@ -105,7 +105,7 @@ def coq_tts(message,filename):
 def get_swc_enpoints():
     new_endpoints={}
     r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
-    for voice in json.loads(r.json()): # this is double encoding from the tts box
+    for voice in r.json(): # this is double encoding from the tts box
             new_endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
             new_endpoints.update({
     "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
@@ -136,8 +136,8 @@ def upload_file():
     else:
         file = request.files['file']
         temp_filename=tempfile.NamedTemporaryFile()  ;
-        file.save(temp_filename)
-        files={'file': (file.filename, temp_filename)}
+        file.save(temp_filename.name)
+        files={'file': (file.filename, open(temp_filename.name,'rb'))}
         r=requests.post(SWC_TTS_URL.replace('tts','upload'),files=files)
         endpoints=get_swc_enpoints()
         return r.content
