@@ -53,7 +53,8 @@ SessionClass = sessionmaker(bind=engine)
 # im gonna clean up the exception handling once i figure out what exceptions are what, seems weird
 # cuz the repeated code is nasty
 def swc_tts(str_voice,str_message,str_filename):
-    payload = {'text': str_message, 'time': 'time', 'priority' : '100.0'}
+    payload = {'text': str_message, 'time': 'time', 'priority' : '100.0','voice_clone':str_voice}
+    logger.warning(payload)
     try:
         r = requests.post(SWC_TTS_URL, json=payload)
         r.raise_for_status()
@@ -65,7 +66,7 @@ def swc_tts(str_voice,str_message,str_filename):
         return ("ERROR: swc_tts Error Connecting:")
     except requests.exceptions.Timeout as errt:
         return ("ERROR: swc_tts Timeout Error:")     
-    open(filename, 'wb').write(r.content)    
+    open(str_filename, 'wb').write(r.content)    
     data=r.json()["wav"]
     scaled = np.int16(data / np.max(np.abs(data)) * 32767)
     write(str_filename, int(r.json()["rate"]), scaled)
@@ -86,6 +87,15 @@ def coq_tts(message,filename):
     open(filename, 'wb').write(r.content)
     return filename
 
+
+
+
+endpoints={}
+#will do this right later
+#r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
+#for voice in json.loads(r.json()):
+#        endpoints["swc_"+voice] = lambda str_message,str_filename: swc_tts(voice,str_message,str_filename)
+
 # - all endpoints must return path to tts file, like cache/<id>
 # - return string that starts with ERROR on error 
 # - can return an external url if it wants, but probably shouldnt, path
@@ -93,15 +103,16 @@ def coq_tts(message,filename):
 # - should be storing in /cache for playback
 # - prefered to prefix file name with static id of source e.g coqtts_<id>
 # - must be at least one end point
-# - default is first defined endpoint in dictionary
 
-endpoints = {
-"coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
-"fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
-"forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
-
-}
-current_endpoint=list(endpoints.keys())[0] 
+endpoints.update( {
+    "swc_major": lambda str_message,str_filename: swc_tts("major",str_message,str_filename) ,
+    "swc_dsp": lambda str_message,str_filename: swc_tts("dsp",str_message,str_filename) ,
+    "swc_trump": lambda str_message,str_filename: swc_tts("trump",str_message,str_filename) ,  
+    "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
+    "fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
+    "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
+})
+current_endpoint="swc_trump" 
 def install():
     try:
         SuperChat.__table__.create(engine)
