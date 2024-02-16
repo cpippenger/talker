@@ -167,6 +167,17 @@
 				}
 
 		}
+		 // this is all very lazy lol
+		function newTTS(username,amount,text){
+			data={"username":$('#newtts_name')[0].value,"text":$('#newtts_text')[0].value,"amount":$('#newtts_amount')[0].value}
+			$.post({url: "/insert_super_chat",data: JSON.stringify(data),  contentType:"application/json; charset=utf-8",
+  dataType:"json", success: function(result){
+				console.log(result.status);
+				$('#newttsoutput').text(result.status)
+				}
+			});
+		}
+		
 		
 	function update_default(element)
 		{
@@ -193,7 +204,7 @@ $( document ).ready(function() {
 
       <div class="nav col-lg-7">
 	  
-<div class="form-floating col-sm-5">
+<div class="form-floating ">
   <select  onchange="update_default(this);" class="form-select form-select" id="floatingSelect" aria-label="Floating label select example">
 {% for item in endpoints %}   
     <option {% if item == current_endpoint %} selected  {% endif %} >{{ item|safe }} </option>
@@ -204,6 +215,8 @@ $( document ).ready(function() {
 </div>
 <button class="btn btn-outline-secondary" type="button"  onclick="play_tts ()" >Play TTS</button><button id=autoplay class="btn btn-outline-secondary" type="button"  onclick="toggle_autoplay()" >Auto Play: Off</button><button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#uploadZip">
   uploadZip
+</button><button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#newTTS">
+  new TTS
 </button>
       </div>
     </header>
@@ -222,7 +235,7 @@ $( document ).ready(function() {
 </div>
 
 
-<!-- Modal -->
+<!-- Upload Modal -->
 <div class="modal fade" id="uploadZip" tabindex="-1" role="dialog"  aria-hidden="true">
   <div class="modal-dialog" role="document">
     <div class="modal-content">
@@ -231,12 +244,28 @@ $( document ).ready(function() {
        <p> Upload zip file of wavs</p>
 	   <form  enctype="multipart/form-data" action="/upload" method=post >
 	   <input name="file" type="file" accept=".zip" />
-	   <input type="submit" />
+	   <input type="submit" /></form>
       </div>
 
     </div>
   </div>
 </div>
+<!-- new tts Modal -->
+<div class="modal fade" id="newTTS" tabindex="-1" role="dialog"  aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
 
+      <div class="modal-body">
+       <p> NewTTS</p>
+		<p id="newttsoutput" ></p>
+		Username: <input id='newtts_name' name="username" /><br />
+		Amount: <input id="newtts_amount" /><br />
+	   Text: <input id="newtts_text" /><br />
+	   <button onclick="newTTS()" >test</button>
+
+
+    </div>
+  </div>
+</div>
 </main>
 </html>
