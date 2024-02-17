@@ -23,6 +23,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
+import glob
 # Init nltk
 # TODO: Pre-init nltk in container
 import nltk
@@ -149,7 +150,7 @@ async def upload_file(file: UploadFile = File(...)):
     # Save the uploaded file to the specified folder
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     logger.debug(f"Reader.upload(): Saving uploaded file to {file_path = }")
-    try:
+    try: 
         with open(file_path, "wb") as f:
             f.write(file.file.read())
         f.close()
@@ -165,10 +166,15 @@ async def upload_file(file: UploadFile = File(...)):
     try:
         # Extract the contents of the ZIP file
         with ZipFile(file_path, "r") as zip_ref:
-            zip_ref.extractall(extract_folder)
-    except Exception as e:
-        logger.debug(f"Reader.error(): Creating extracting file {extract_folder = }")
+            zip_ref.extractall(extract_folder) 
 
+    except Exception as e:
+        logger.debug( "what: " + e)
+    # move all wav files to root
+
+
+    for path in glob.glob(extract_folder +'/**/*.wav', recursive=True):
+        os.rename(path,extract_folder +'/'+ os.path.basename(path))
 
     # Optional: Remove the uploaded ZIP file
     os.remove(file_path)
@@ -214,7 +220,7 @@ async def test():
     Test return list of available voices.
     """
     logger.debug(f"TTS.get_voice_list()")
-    return json.dumps(list(voice_catalogue.keys()))
+    return list(voice_catalogue.keys())
 
 
 @app.post("/set-config/")
