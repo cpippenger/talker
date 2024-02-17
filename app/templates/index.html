@@ -1,0 +1,29 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="{{ url_for('static', path='/styles.css') }}" rel="stylesheet">
+    <title>Document Upload</title>
+</head>
+<body>
+    <h1>Document Upload</h1>
+    <h2>{{ title }}</h2>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf, .doc, .docx">
+        <input type="submit" value="Upload">
+    </form>
+
+    <table>
+        <tr>
+            <th>Filename</th>
+        </tr>
+        {% for document in documents %}
+            <tr>
+                <td>{{ document }}</td>
+            </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

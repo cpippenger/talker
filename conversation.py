@@ -1,8 +1,10 @@
 import os
+import json
 import time
 import pickle
 #import IPython
 import logging
+import requests
 import numpy as np
 from copy import copy
 from datetime import datetime
@@ -18,7 +20,7 @@ from color import Color
 from human import Human, Memory
 from sentiment import Sentiment, SentimentScore
 from models.comment import Comment
-from controllers.database_controller import DataBaseController
+#from controllers.database_controller import DataBaseController
 
 logging.basicConfig(level=logging.INFO)
 #logging.basicConfig(filename='example.log', encoding='utf-8', level=logging.DEBUG)
@@ -49,7 +51,16 @@ class Conversation():
         self.max_memory_insert_size = 3
         self.sentiment = Sentiment()
         self.is_debug = is_debug
-        self.dbc = DataBaseController()
+        
+        self.voice_ip = "192.168.1.120"
+        self.voice_port = "8100"
+
+        if "pygmalion" in robot.model_name.lower():
+            self.model_type = "pygmalion"
+        elif "mytho" in robot.model_name.lower():
+            self.model_type = "mytho"
+
+        #self.dbc = DataBaseController()
         
     def __repr__(self):
         out_str =  f"Converstaion():\n"
@@ -129,23 +140,31 @@ class Conversation():
             memory_insert_count += 1
             if memory_insert_count > self.max_memory_insert_size:
                 break
+        if self.model_type == "pygmalion":
+            prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
+            prompt += "<START>\n"
+            #prompt += "[DIALOGUE HISTORY]"       
+            # Dialogue history
+            prompt += chat_history.prompt()
         
-        prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
-        prompt += "<START>\n"
-        #prompt += "[DIALOGUE HISTORY]"       
-        # Dialogue history
-        prompt += chat_history.prompt()
-        
-        # Randomly add things to prompt to steer conversation
-        #if random() > 0.75:
-        #    prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
-        #if random() > 0.5:
-        #    prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
-        
-        # Robot name prompt
-        prompt += f"{self.robot.name}:"
+            # Randomly add things to prompt to steer conversation
+            #if random() > 0.75:
+            #    prompt += np.random.choice(self.robot.prompt_spices) + "\n"        
+            #if random() > 0.5:
+            #    prompt += f"Be {np.random.choice(self.robot.prompt_emotions)}.\n"
+            
+            # Robot name prompt
+            prompt += f"{self.robot.name}:"
+        elif self.model_type == "mytho":
+            prompt = f"<System prompt/Character Card>\n"
+            prompt += "### Instruction:\n"
+            prompt += "Write Billy's next reply in a chat between Alec and Billy. Write a single reply only.\n"
+            prompt += chat_history.prompt()
+            prompt += "### Response:"
+
         
         return prompt
+    
     
     def process_comment(self, 
                         commentor:str, 
@@ -165,7 +184,7 @@ class Conversation():
         comment : string - The comment from the 
         """
         func_name = "process_comment"
-        logging.info(f"{__class__.__name__}.{func_name}({commentor}, {comment})")
+        logging.info(f"{__class__.__name__}.{func_name}({commentor = }, {comment = }, {is_speak_response = })")
         start_time = time.time()
         if not self.human_exists(commentor):
             self.add_human(Human(commentor))        
@@ -179,7 +198,7 @@ class Conversation():
         # Save comment
         user_comment = Comment(commentor, comment, self.sentiment.get_sentiment(comment))
 
-        self.dbc.save_comment(user_comment)
+        #self.dbc.save_comment(user_comment)
         #user_comment.save()
         
         # If there are any proper nouns in the text
@@ -197,7 +216,7 @@ class Conversation():
         # Create comment object
         # Save comment to chat history
         chat_history.add_comment(Comment(commentor, comment, sentiment))
-        # Generate robot response                
+        # Generate robot response
         prompt = self.build_prompt(commentor, self.chat_buffer_size)
         if prompt_info:
             prompt = prompt_info + "\n" + prompt
@@ -242,17 +261,18 @@ class Conversation():
             output_scores[longest_output_index] += 0.25
             # Get the top scoring index
             top_index = np.argmax(output_scores)
-            logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
+            #logging.info(f"{__class__.__name__}.{func_name}(): Top comment [{top_index}]")
             # Pick the response to use
             output = outputs[top_index]
 
         # Text to speech output 
-        #wav, rate = self.robot.read_response(output)
         wav, rate = None, None
         
         # If should speak response
-        #if is_speak_response:
-        #    IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
+        if is_speak_response:
+            logging.info(f"{__class__.__name__}.{func_name}(): Reading response")
+            wav = self.tts(output)
+            #IPython.display.display(IPython.display.Audio(wav, rate=rate, autoplay=True))
         
         # Get sentiment for the comment
         sentiment_dict = self.sentiment.get_sentiment(output)
@@ -286,9 +306,38 @@ class Conversation():
         tokens_per_sec = len(output.split(" ")) / runtime
         logging.info(f"{__class__.__name__}.{func_name}(): runtime = {runtime}")
         logging.info(f"{__class__.__name__}.{func_name}(): tokens_per_sec = {tokens_per_sec}")
-        return output, wav, rate
-    
-    
+
+        return output, wav
+
+
+    def tts(self, text):
+        
+        payload = {'text': text, 'time': 'time', 'priority' : "100.0"}
+        
+        start_time = time.time()
+        r = requests.post(f"http://{self.voice_ip}:{self.voice_port}/tts", data=json.dumps(payload))
+
+        if not r.status_code == 200:
+            logging.error(f"{__class__.__name__}.tts(): Error getting tts response {r.status_code = }")
+            return None
+        if not "wav" in r.json():
+            logging.error(f"{__class__.__name__}.tts(): Error missing wav in response {r.json() = }")
+            return None
+        
+        # Extract wav
+        wav = r.json()["wav"]
+
+        # Profile
+        end_time = time.time()
+        run_time = end_time - start_time
+        words_per_sec = len(text.split(" ")) / run_time
+        logging.debug(f"{run_time = :.2f}s")
+        logging.debug(f"{words_per_sec = :.2f}")
+        logging.debug(f"Run_time ratio = {(len(wav) / 24000) / run_time :.2f}")
+
+        return wav
+
+
 class ChatHistory():
     def __init__(self, 
                  personA:str, 

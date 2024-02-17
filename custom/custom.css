@@ -1284,6 +1284,7 @@ div.output_subarea {
 	border: .1em #f8f8f2 solid;
 	border-radius: .15em;
 	color: #f8f8f2;
+    background: black;
 }
 
 div.output_html {

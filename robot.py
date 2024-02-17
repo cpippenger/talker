@@ -22,6 +22,8 @@ from nltk.tokenize import sent_tokenize
 
 from color import Color
 
+from tts.voicebox import VoiceBox
+
 # TODO: Implement a lookahead on text generation
 # so that the bot will generate an expected response
 # to it's comment. It will then analyze the sentiment
@@ -83,6 +85,7 @@ class Robot():
         }
         self.max_generation_time = 10
         self.init_models()
+
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
     def to_dict(self):
@@ -164,7 +167,8 @@ class Robot():
             elif self.model_name:
                 logging.info(f"{__class__.__name__}.{__name__}(): Init mew Model: {self.model_name}")
                 self.model_source = self.model_name
-                self.model = AutoModelForCausalLM.from_pretrained(self.model_name)
+                self.model = AutoModelForCausalLM.from_pretrained(self.model_name,
+                                                                device_map="cuda")
                 self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
                 #config = AutoConfig.from_pretrained(model_name)
                 ##with init_empty_weights():
@@ -175,7 +179,7 @@ class Robot():
         if not self.is_use_bnb:
             # Set precision to 16 bit
             logging.info(f"{__class__.__name__}.{__name__}(): Setting precision to fp16")
-            self.model.half()
+            #self.model.half()
             # If is using gpu
             if self.is_use_gpu:
                 # Send model to gpu
@@ -183,67 +187,9 @@ class Robot():
                 self.model.to("cuda")
         logging.info(f"{__class__.__name__}.{__name__}(): Done")
 
-        # Init text to speach model
-        self.tacotron2 = Tacotron2.from_hparams(source="speechbrain/tts-tacotron2-ljspeech", savedir="tmpdir_tts")
-        self.hifi_gan = HIFIGAN.from_hparams(source="speechbrain/tts-hifigan-ljspeech", savedir="tmpdir_vocoder")
-        
         return True
     
-    def read_response(self, text:str, rate_modifier=None, is_say=False):
-        """
-        Convert text to speech
-        """
-        start_time = time.time()
-        #logging.info(f"{__class__.__name__}.{__name__}(text={text}, rate_modifier={rate_modifier}, is_say={is_say})")
-        wav = None
-        # If text is long        
-        if len(text) > 120:
-            #text_split = text.split(".") 
-            text_split = sent_tokenize(text)
-            wavs = []
 
-            for sentence in text_split:
-                #print (f"Reading {sentence}")
-                sentence = sentence.strip()
-                #wav, rate = robot.read_response(sentence.strip())
-                if len(sentence) < 2:
-                    #print ("Skipping")
-                    continue
-                try:
-                    # Running the TTS
-                    mel_output, mel_length, alignment = self.tacotron2.encode_text(sentence)
-                    # Running Vocoder (spectrogram-to-waveform)
-                    wav = self.hifi_gan.decode_batch(mel_output)
-                    wav = wav.squeeze(1)
-                    wavs.append(wav)
-                except:
-                    print (f"Failed to read text = {sentence}")
-
-            wav = torch.hstack(wavs)
-        
-        else:
-            try:
-                # Running the TTS
-                mel_output, mel_length, alignment = self.tacotron2.encode_text(text)
-
-                # Running Vocoder (spectrogram-to-waveform)
-                wav = self.hifi_gan.decode_batch(mel_output)
-                wav = wav.squeeze(1)
-            except:
-                logging.error(f"{Color.F_Red}{__class__.__name__}.read_response(): Failed to read text = {text}{Color.F_White}")
-            
-        rate = 22050 * 1.07
-        
-        if rate_modifier:
-            rate = rate * rate_modifier
-        runtime = time.time() - start_time
-        logging.info(f"{__class__.__name__}.read_response(): runtime = {runtime}")
-        return wav, rate
-        
-
-    #def post_process_output(self, output):
-
-    
     def get_robot_response(self,
                            person:str,
                            prompt:str,
@@ -362,7 +308,7 @@ class Robot():
                                              eos_token_id=self.tokenizer.eos_token_id,
                                              bos_token_id=self.tokenizer.bos_token_id,
                                              pad_token_id=self.tokenizer.pad_token_id,
-                                             max_time=7,
+                                             max_time=12,
                                              
         )
 
@@ -400,6 +346,7 @@ class Robot():
             logging.info(f"{__class__.__name__}.get_robot_response(): Unprocessed output = {output}")
             # Filter own name prompts
             output = output.replace("lly:", "")
+            output = output.replace("Bi ", "")
             #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
             # Count tokens in output
             token_count = len(output.split(" "))

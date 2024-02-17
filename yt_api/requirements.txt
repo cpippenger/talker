@@ -1,0 +1,13 @@
+flask[async]>=2.0  
+Werkzeug>=2.0
+pandas
+Flask-RESTful
+Flask-SQLAlchemy
+Flask-Marshmallow
+Marshmallow
+marshmallow-sqlalchemy
+psycopg2-binary
+flask-restplus
+pyyaml==6.0.1
+faker==23.1.0
+minio==7.2.3
