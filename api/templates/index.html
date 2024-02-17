@@ -117,9 +117,7 @@
 			  super_chats=JSON.parse(result);
 			  output="";
 				for ( key in super_chats) {
-
 					console.log(super_chats[key]["id"]);
-					
 					row = document.createElement("div");
 					row.classList.add("row", "border-top-3", "rounded-5","my-3");
 					if(localStorage.getItem(super_chats[key]["id"]) == null){
@@ -146,7 +144,7 @@
 					sm_col.classList.add("col-sm");					
 					p = document.createElement("p");
 					p.classList.add("p-3","m-0");
-					$(p).text(super_chats[key]["text"] + error_string);					
+					$(p).text(super_chats[key]["datetime_uploaded"].slice(0,-10) + ' | ' + super_chats[key]["amount"]   + ' | ' + super_chats[key]["username"] + ' | ' +   super_chats[key]["text"] + error_string);					
 
 					row.appendChild(sm_col);
 					sm_col.appendChild(p);
@@ -258,7 +256,7 @@ $( document ).ready(function() {
     <div class="modal-content">
 
       <div class="modal-body">
-       <p> NewTTS</p>
+       <p> NewTTS <a  href='/clear-all'>&nbsp;Clear All&nbsp; </a></p>
 		<p id="newttsoutput" ></p>
 		Username: <input id='newtts_name' name="username" /><br />
 		Amount: <input id="newtts_amount" /><br />

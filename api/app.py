@@ -100,12 +100,12 @@ def coq_tts(message,filename):
 # - prefered to prefix file name with static id of source e.g coqtts_<id>
 # - must be at least one end point
 
-#endpoints={}
-#will do this right later
-def get_swc_enpoints():
+
+def get_swc_endpoints():
     new_endpoints={}
+    # not handling exceptoins here because i want a fatal error on no connect
     r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
-    for voice in r.json(): # this is double encoding from the tts box
+    for voice in r.json(): 
             new_endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
             new_endpoints.update({
     "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
@@ -113,9 +113,9 @@ def get_swc_enpoints():
     "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
     })
     return new_endpoints
-endpoints=get_swc_enpoints()
+endpoints=get_swc_endpoints()
 
-current_endpoint="swc_trump"# hardcoded for now, not sure what to do about this,
+current_endpoint="coq_tts"# hardcoded for now, not sure what to do about this,
                             # was using the first of the array
 def install():
     try:
@@ -127,6 +127,14 @@ def install():
 async def root():
     return render_template('index.html',endpoints=endpoints.keys(),current_endpoint=current_endpoint)
 
+@app.get("/clear-all")
+async def clear_all():
+    session = SessionClass()
+    session.query(SuperChat).delete()
+    session.commit()
+    session.close()
+    return '<script>location.assign("/");</script>' #hack
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     global endpoints
@@ -135,11 +143,11 @@ def upload_file():
         return '{"status":"MISSING FILE"}'
     else:
         file = request.files['file']
-        temp_filename=tempfile.NamedTemporaryFile()  ;
+        temp_filename=tempfile.NamedTemporaryFile()  ; #pretty sure file already has a file object
         file.save(temp_filename.name)
         files={'file': (file.filename, open(temp_filename.name,'rb'))}
         r=requests.post(SWC_TTS_URL.replace('tts','upload'),files=files)
-        endpoints=get_swc_enpoints()
+        endpoints=get_swc_endpoints()
         return r.content
     
 
@@ -167,7 +175,7 @@ def insert_super_chats():
     if username != None and text != None and amount != None:
         #cache_file=save_tts(username + " says " + text,"cache/" + uuid )
         cache_file=endpoints[current_endpoint](username + " says " + text,"cache/" + uuid )
-        session.add(SuperChat(id=uuid,username=username,text=current_endpoint + " | " + amount + " | " + username + " - " +text,amount=amount,datetime_uploaded=datetime.now(),tts_file=cache_file))   
+        session.add(SuperChat(id=uuid,username=username,text=current_endpoint + " - " +text,amount=amount,datetime_uploaded=datetime.now(),tts_file=cache_file))   
         session.commit()
         session.close()
         return '{"status":"success"}'
