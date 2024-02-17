@@ -1,6 +1,6 @@
 
 *.wav
-tts/models/*
 .DS_store
 DF_store
 *.m4a
+tts/model_cache/*
