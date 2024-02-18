@@ -13,6 +13,7 @@ import zipfile
 from zipfile import ZipFile
 import threading
 from copy import copy
+import sqlalchemy
 from nltk.tokenize import sent_tokenize
 import numpy as np
 from functools import reduce
@@ -29,9 +30,24 @@ import glob
 import nltk
 nltk.download('punkt')
 
+#from psycopg2.extensions import register_adapter, AsIs
+#register_adapter(np.int64, AsIs)
+#register_adapter(np.float32, AsIs)
+#register_adapter(np.float16, AsIs)
+
+
 # User imports
 from voicebox import VoiceBox
+from models.voice import Voice
+from models.retry import Retry
 
+
+# Environment Variables
+DATABASE_TYPE = os.environ.get('DATABASE_TYPE',"postgresql")
+DATABASE_USERNAME = os.environ.get('DATABASE_USER',"test")
+DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD',"test")
+DATABASE_SCHEMA = os.environ.get('DATABASE_SCHEMA',"chat")
+DATABASE_HOST = os.environ.get('DATABASE_HOST',"192.168.1.4")
 # Init redis connection
 BM_TO_TTS_REDIS_HOST = os.environ['BM_TO_TTS_REDIS_HOST']
 BM_TO_TTS_REDIS_PORT = os.environ.get('BM_TO_TTS_REDIS_PORT', 6379)
@@ -62,15 +78,29 @@ read_speed_lower_threshold = 1.5
 # Set an upper bound. Often when the model skips words the read_speed will be too high.
 read_speed_upper_threshold = 5.0
 
-port = os.environ.get("READER_PORT", 8100)
+# Connec to db 
+db_uri = f'{DATABASE_TYPE}://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@{DATABASE_HOST}/{DATABASE_SCHEMA}'
+logger.debug(f"TTS(): Connecting to db {db_uri}")
+engine = sqlalchemy.create_engine(db_uri)
+SessionClass = sqlalchemy.orm.sessionmaker(bind=engine)
+
+
+# Init tables
+try:
+    Voice.__table__.create(engine)
+except sqlalchemy.exc.ProgrammingError:
+    pass
+try:
+    Retry.__table__.create(engine)
+except sqlalchemy.exc.ProgrammingError:
+    pass
+
 
 # Init voicebox
-voice = VoiceBox(
+voice_box = VoiceBox(
             logger=logger, 
             config_filename="voicebox_config.json"
 )
-
-logger.debug(f"message_queue(): Starting Message Queue service")
 
 # Init api
 app = FastAPI()
@@ -139,6 +169,17 @@ voice_catalogue = {
     ]
  }
 
+# Push voices in catalogue to db
+#try:
+session = SessionClass(expire_on_commit=False)
+for voice_name in voice_catalogue:
+    session.add(voice_catalogue[voice_name])
+session.commit()
+#except:
+#    logger.error(f"TTS(): Could not push voice to db")
+
+session.close()
+
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -146,23 +187,23 @@ async def upload_file(file: UploadFile = File(...)):
     upload_filename = file.filename
     upload_name = upload_filename.replace(".zip", "")
 
-    logger.debug(f"Reader.upload(): {upload_filename= }")
+    logger.debug(f"TTS.upload(): {upload_filename= }")
     # Save the uploaded file to the specified folder
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    logger.debug(f"Reader.upload(): Saving uploaded file to {file_path = }")
+    logger.debug(f"TTS.upload(): Saving uploaded file to {file_path = }")
     try: 
         with open(file_path, "wb") as f:
             f.write(file.file.read())
         f.close()
     except Exception as e:
-        logger.debug(f"Reader.error(): Creating local file {upload_filename = }")
+        logger.debug(f"TTS.error(): Creating local file {upload_filename = }")
 
     extract_folder = os.path.join(UPLOAD_FOLDER, upload_name, "extracted")
 
     if not os.path.exists(extract_folder):
         os.makedirs(extract_folder)
 
-    logger.debug(f"Reader.upload(): Extracting file at  {extract_folder = }")
+    logger.debug(f"TTS.upload(): Extracting file at  {extract_folder = }")
     try:
         # Extract the contents of the ZIP file
         with ZipFile(file_path, "r") as zip_ref:
@@ -188,9 +229,23 @@ async def upload_file(file: UploadFile = File(...)):
             if file.lower().endswith(".wav"):
                 wav_files.append(f"{extract_folder}/{file}")
     
-    voice_catalogue[upload_name] = [wav_files]
+    voice_catalogue[upload_name] = Voice(
+                                    voice_name=upload_name,
+                                    file_list=wav_files,
+                                    fallback_file_list=wav_files,
+                                    default_speed=1.08,
+                                    expected_read_speed=2.0
+    )
+    # Push new voice to db
+    session = SessionClass(expire_on_commit=False)
+    session.add(voice_catalogue[upload_name])
+    session.commit()
+    #except:
+    #    logger.error(f"TTS(): Could not push voice to db")
 
-    logger.debug(f"Reader.upload(): {voice_catalogue[upload_name]}")
+    session.close()
+
+    logger.debug(f"TTS.upload(): {voice_catalogue[upload_name].to_dict()}")
 
     return JSONResponse(content={"message": "File uploaded and extracted successfully", "extracted_folder": extract_folder})
     #except Exception as e:
@@ -267,31 +322,31 @@ def push_to_queue(
         The index in the queue of the newly inserted item. 
         If value is not a positive integer then audio was not added to the queue. 
     """
-    logger.info(f"Reader.push_to_queue()")
-    logger.debug(f"Reader.push_to_queue({wav = }, {rate = }, {text = }, {is_normalize})")
+    logger.info(f"TTS.push_to_queue()")
+    logger.debug(f"TTS.push_to_queue({wav = }, {rate = }, {text = }, {is_normalize})")
     # If did not receive a valid list
     if (not isinstance(wav, list)) and (not isinstance(wav, np.ndarray)):
-        logger.error("push_to_queue(): Received an empty wav")
+        logger.error("TTS.push_to_queue(): Received an empty wav")
 
     if (isinstance(wav, list)): 
         wav = np.array(wav)
 
-    logger.debug(f"Reader.push_to_queue(): {len(wav) = }")
-    logger.debug(f"Reader.push_to_queue(): {np.min(wav) =  :.3f}")
-    logger.debug(f"Reader.push_to_queue(): {np.max(wav) =  :.3f}")
-    logger.debug(f"Reader.push_to_queue(): Sending chunk to queue")
-    logger.debug(f"Reader.push_to_queue(): {np.mean(wav) =  :.2f}")
-    logger.debug(f"Reader.push_to_queue(): {type(json_wav) = }")
-    #logger.debug(f"Reader.push_to_queue(): {json_wav[0:100] = }")
+    logger.debug(f"TTS.push_to_queue(): {len(wav) = }")
+    logger.debug(f"TTS.push_to_queue(): {np.min(wav) =  :.3f}")
+    logger.debug(f"TTS.push_to_queue(): {np.max(wav) =  :.3f}")
+    logger.debug(f"TTS.push_to_queue(): Sending chunk to queue")
+    logger.debug(f"TTS.push_to_queue(): {np.mean(wav) =  :.2f}")
+    logger.debug(f"TTS.push_to_queue(): {type(json_wav) = }")
+    #logger.debug(f"TTS.push_to_queue(): {json_wav[0:100] = }")
     
     # If should normalize
     if is_normalize:
-        logger.debug(f"Reader.push_to_queue(): Normalizing wav")
-        wav = voice.normalize(wav)
-        logger.debug(f"Reader.push_to_queue(): {np.min(wav) =  :.3f}")
-        logger.debug(f"Reader.push_to_queue(): {np.max(wav) =  :.3f}")
-        logger.debug(f"Reader.push_to_queue(): {np.mean(wav) =  :.2f}")
-        #logger.debug(f"Reader.push_to_queue(): {json_wav[0:100] = }")
+        logger.debug(f"TTS.push_to_queue(): Normalizing wav")
+        wav = voice_box.normalize(wav)
+        logger.debug(f"TTS.push_to_queue(): {np.min(wav) =  :.3f}")
+        logger.debug(f"TTS.push_to_queue(): {np.max(wav) =  :.3f}")
+        logger.debug(f"TTS.push_to_queue(): {np.mean(wav) =  :.2f}")
+        #logger.debug(f"TTS.push_to_queue(): {json_wav[0:100] = }")
     
     # If received a numpy array
     if isinstance(json_wav, np.ndarray):
@@ -316,6 +371,107 @@ def push_to_queue(
     #return redis_response
 
     return 1
+
+
+def get_tts_with_retry(
+        text:str,
+        should_retry:bool=True,
+        speed:float=1.01,
+        voice_clone:str="major",
+        is_log_retries:bool=True
+):
+    #logging.debug(f"main.tts({chunk = })")
+    # Get wav from model
+    wav, rate, wavs = voice_box.read_text(
+                                text,
+                                speed=speed
+                            )
+    
+    # Check read speed
+    read_speed, read_length = voice_box.get_read_speed(text, wav)
+    logger.debug(f"TTS.process_text(): init {read_speed =  :.2f}")
+
+    # If read speed is outside valid range
+    if should_retry and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+        logger.warning(f"TTS.process_text(): Bad read speed detected : {read_speed = :.2f}")
+        
+        # Save initial and subsequent reads along with their read speed
+        all_reads = [
+            {
+                "read_speed" : read_speed,
+                "wav" : wav
+            }
+        ]
+        # Retry generating the output with different inputs
+        # TODO: Change params on each try to give a better shot of producing valid output
+        retry_attempt = 1
+        retry_attempts = 3
+        while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
+            logger.warning(f"TTS.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
+                
+            # Save first bad output
+            session = SessionClass(expire_on_commit=True)
+            session.add(Retry(
+                voice_name=voice_clone,
+                file_list=voice_box.speaker_wav,
+                text=text,
+                bad_output_wav=wav.tolist()
+            ))
+            session.commit()
+            session.close()
+
+            # Select a random set of samples from the fallback group
+            if voice_clone in voice_catalogue:
+                voice_box.speaker_wav = list(np.random.choice(voice_catalogue[voice_clone].fallback_file_list, 3, replace=False))
+            else:
+                voice_box.speaker_wav = list(np.random.choice(voice_clone, 1, replace=False))
+
+            logger.warning(f"TTS.process_text(): Retying with : {voice_box.speaker_wav =}")
+            #logger.warning(f"TTS.process_text(): {type(voice_box.speaker_wav) =}")
+            #logger.warning(f"TTS.process_text(): {type(voice_box.speaker_wav[0]) =}")
+            # Get audio output from TTS
+            wav, rate, wavs = voice_box.read_text(
+                                text,
+                                speed=speed
+                            )
+            # Get read speed
+            read_speed, read_length = voice_box.get_read_speed(text = text, wav = wav)
+            # Save read
+            all_reads.append(
+                {
+                    "read_speed" : read_speed,
+                    "wav" : wav
+                }
+            )
+
+            logger.debug(f"TTS.process_text(): {read_speed =  :.2f}")
+            retry_attempt += 1
+            if retry_attempt > retry_attempts: 
+                break
+
+        # Find the best read speed in each generated sample
+        logger.debug(f"TTS.process_text(): Selecting best wav out of {len(all_reads)}")
+        best_read_speed = -1
+        best_read_index = -1
+        for read_index in range(len(all_reads)):
+            read_speed = all_reads[read_index]["read_speed"]
+            if read_speed > best_read_speed and read_speed < read_speed_upper_threshold:
+                best_read_speed = read_speed
+                best_read_index = read_index
+        # If found a wav that met criteria
+        if best_read_index != -1:
+            logger.debug(f"TTS.process_text(): Best wav on {read_index = } with {best_read_speed =}")
+            wav = all_reads[best_read_index]["wav"]
+        else:
+            logger.debug(f"TTS.process_text(): None of the reads met criteria")
+
+        # If still has a bad read speed
+        if read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold:
+            logger.error(f"TTS.process_text(): Could not generate valid audio for {text = }")
+            #continue
+    
+
+    return wav, 24050
 
 
 def process_text(
@@ -361,8 +517,8 @@ def process_text(
         A list of float values representing the generated wav form. The wav is single channel (mono), 32-bit float,
         24050hz sample rate. 
     """
-    logger.info(f"Reader.process_text()")
-    logger.debug(f"Reader.process_text({text = }, {push_chunks = }, {return_full = }, {is_add_start_click}, {is_add_end_click = }, {speed = })")
+    logger.info(f"TTS.process_text()")
+    logger.debug(f"TTS.process_text({text = }, {push_chunks = }, {return_full = }, {speed = }, {voice_clone = })")
     # If given an empty string
     if not text or text.strip() == "":
         # Return nothing
@@ -377,21 +533,32 @@ def process_text(
     text = text.replace("I'll", "I will")
     text = text.replace("i'll", "i will")
     
-    # If given a specific voice to clone
-    if voice_clone:
-        # Copy original voice
-        init_speaker_wav = copy(voice.speaker_wav)
-        # If is a single value
-        if isinstance(voice_clone, str) and voice_clone in voice_catalogue:
-            logger.debug(f"Reader.process_text(): Using {voice_clone} voice from catalogue : {voice_catalogue[voice_clone][0]}")
-            voice.speaker_wav = voice_catalogue[voice_clone][0]
-        # Else given some specific string
-        else:    
-            voice.speaker_wav = voice_clone
+    # If given voice is in catalogue
+    if voice_clone in voice_catalogue:
+        logger.debug(f"TTS.process_text(): Using voice from catalogue {voice_clone} : {voice_catalogue[voice_clone].file_list}")
+        # Set speaker wavs
+        voice_box.speaker_wav = voice_catalogue[voice_clone].file_list
+
+    # If given voice is a filename or list of filenames
+    elif ".wav" in voice_clone:
+        logger.debug(f"TTS.process_text(): Using custom voice file list {voice_clone}")
+        voice_box.speaker_wav = voice_clone
+
+    # Unknowen voice value
+    else:
+        logger.error(f"TTS.process_text(): Could not recognize {voice_clone = } defaulting to major")
+        # Default to major voice
+        voice_box.speaker_wav = voice_catalogue["major"].file_list
+        voice_clone = "major"
+    
+
+    logger.warning(f"TTS.process_text(): {voice_box.speaker_wav = }")
+    #logger.warning(f"TTS.process_text(): {type(voice_box.speaker_wav) = }")
+    #logger.warning(f"TTS.process_text(): {type(voice_box.speaker_wav[0]) = }")
 
     # If text contains silence tokens or is long text
     if "." in text or len(text) > 250:
-        #logger.debug(f"Reader.main.process_text(): Interpret pauses")
+        #logger.debug(f"TTS.main.process_text(): Interpret pauses")
         # Split on '.'
         #texts = text.split(".")
 
@@ -418,7 +585,7 @@ def process_text(
             combined_sentences.append(current_entry.strip())
         texts = combined_sentences
 
-        #logger.debug(f"Reader.main.process_text(): {texts = }")
+        #logger.debug(f"TTS.main.process_text(): {texts = }")
         
         # Save an id to identify the group of message sent to the ui
         group_id = uuid.uuid4()
@@ -430,11 +597,11 @@ def process_text(
             logger.debug ("-"*100)
             # Extract the chunk
             chunk = texts[chunk_index].strip()
-            logger.debug(f"Reader.main.process_text(): Processing {chunk = }")
+            logger.debug(f"TTS.main.process_text(): Processing {chunk = }")
             # If chunk is empty
             if not chunk or chunk.strip() == "":
                 # Skip
-                logger.debug(f"Reader.main.process_text(Skip blank chunk)")
+                logger.debug(f"TTS.main.process_text(Skip blank chunk)")
                 continue
 
             # Determine if there should be a pause in the output
@@ -548,13 +715,13 @@ def process_text(
                 json_wav = wav.astype(float).tolist()
                 #logging.debug(f"main.tts(): Received output from model: {type(wav) = }")
                 # audio_queue.put(json.dumps({"data":json_wav, "rate": rate}))
-                #logger.debug(f"Reader.main.process_text(): Sending chunk to queue")
-                #logger.debug(f"Reader.main.process_text(): {len(wav) = }")
-                #logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
-                #logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
-                #logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
-                #logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
-                #logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
+                #logger.debug(f"TTS.main.process_text(): Sending chunk to queue")
+                #logger.debug(f"TTS.main.process_text(): {len(wav) = }")
+                #logger.debug(f"TTS.main.process_text(): {np.min(wav) = }")
+                #logger.debug(f"TTS.main.process_text(): {np.max(wav) = }")
+                #logger.debug(f"TTS.main.process_text(): {np.mean(wav) = }")
+                #logger.debug(f"TTS.main.process_text(): {type(json_wav) = }")
+                #logger.debug(f"TTS.main.process_text(): {json_wav[0:100] = }")
                 
                 # Check if is the last chunk being sent from the original text
                 is_last_chunk = False
@@ -566,7 +733,7 @@ def process_text(
                     is_last_chunk = True
 
                 response_time = time.time()
-                #logger.debug(f"Reader.main.process_text(): {response_time =}")
+                #logger.debug(f"TTS.main.process_text(): {response_time =}")
                 if is_push_to_redis:
                     redis_msg = json.dumps({
                                             "data": json_wav, 
@@ -578,17 +745,17 @@ def process_text(
                                             "message_group_id": str(group_id),
                                             "is_last_message": is_last_chunk
                                             })
-                    #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
+                    #logger.debug(f"TTS.main.process_text(): {redis_msg = }")
                     try:
                         redis_response = redis_conn.lpush("audio", redis_msg)
-                        logger.debug(f"Reader.main.process_text(): {redis_response = }")
+                        logger.debug(f"TTS.main.process_text(): {redis_response = }")
 
                         # If did not get an appropriate 
                         if not redis_response or redis_response < 0:
-                            logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
+                            logger.error("TTS.main.process_text(): Error sending audio to redis queue") 
 
                     except redis.exceptions.ConnectionError:
-                        logger.error(f"Reader.main.process_text(): Error sending response to redis")
+                        logger.error(f"TTS.main.process_text(): Error sending response to redis")
 
             # Save chunk wav
             full_wav.append(wav)
@@ -600,104 +767,25 @@ def process_text(
 
     # Else just run the full text
     else:
-        logger.debug(f"Reader.main.process_text(): Running full message")
-        wav, rate, wavs = voice.read_text(text,
-                                        is_add_start_click=is_add_start_click, 
-                                        is_add_end_click=is_add_end_click,
-                                        speed=speed)
-        
-
-        # Check read speed
-        read_speed, read_length = voice.get_read_speed(text, wav)
-
-        # If read speed is outside valid range
-        if should_retry and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-            # Save initial list of speakers
-            init_speaker_wav = copy(voice.speaker_wav)
-            logger.warning(f"Reader.process_text(): Slow read speed detected")
-            # Save initial and subsequent reads along with their read speed
-            all_reads = [
-                {
-                    "read_speed" : read_speed,
-                    "wav" : wav
-                }
-            ]
-            # Retry generating the output
-            # TODO: Change params on each try to give a better shot of producing valid output
-            retry_attempt = 1
-            retry_attempts = 3
-            while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                
-                logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
-                # Select an individual audio sample
-                voice.speaker_wav = init_speaker_wav[retry_attempt]
-                
-                wav, rate, wavs = voice.read_text(
-                                    text, 
-                                    is_add_start_click=False, 
-                                    is_add_end_click=False,
-                                    speed=speed
-                                )
-                
-                read_speed, read_length = voice.get_read_speed(text = text, wav = wav)
-                # Try fixing read speed with simple speed up
-                wav, read_speed = voice.adjust_read_speed(wav, text, read_speed)
-                logger.debug(f"Reader.process_text(): {read_speed = :.2f}")
-                # Save read
-                all_reads.append(
-                    {
-                        "read_speed" : read_speed,
-                        "wav" : wav
-                    }
-                )
-                retry_attempt += 1
-                if retry_attempt > retry_attempts: 
-                    break
-                if retry_attempt >= len(init_speaker_wav): 
-                    break 
+        logger.debug(f"TTS.main.process_text(): Running full message")
+        wav, rate = get_tts_with_retry(text=chunk,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
             
-            # Find the best read speed in each generated sample
-            logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
-            best_read_speed = -1
-            best_read_index = -1
-            for read_index in range(len(all_reads)):
-                read_speed = all_reads[read_index]["read_speed"]
-                if read_speed > best_read_speed and read_speed < read_speed_upper_threshold:
-                    best_read_speed = read_speed
-                    best_read_index = read_index
-            # If found a wav that met criteria
-            if best_read_index != -1:
-                logger.debug(f"Reader.process_text(): Best wav on {read_index = } with {best_read_speed =}")
-                wav = all_reads[best_read_index]["wav"]
-            else:
-                logger.debug(f"Reader.process_text(): None of the reads met criteria")
-            # Reset back to original speaker wav
-            voice.speaker_wav = init_speaker_wav
-        
-        # If still has a bad read speed
-        if read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold:
-            logger.error(f"Reader.process_text(): Could not generate valid audio for {text = }")
-            #return None
-        
-        logger.debug(f"Reader.main.process_text(): Normalizing")
-        wav = voice.normalize(wav)
+
+        logger.debug(f"TTS.main.process_text(): Normalizing")
+        wav = voice_box.normalize(wav)
         json_wav = wav.astype(float).tolist()
 
-        if voice_clone:
-            # Reset back to original speaker wav
-            voice.speaker_wav = init_speaker_wav
-
-        #logger.debug(f"Reader.main.process_text(): Sending chunk to queue")
-        #logger.debug(f"Reader.main.process_text(): {len(wav) = }")
-        #logger.debug(f"Reader.main.process_text(): {np.min(wav) = }")
-        #logger.debug(f"Reader.main.process_text(): {np.max(wav) = }")
-        #logger.debug(f"Reader.main.process_text(): {np.mean(wav) = }")
-        #logger.debug(f"Reader.main.process_text(): {type(json_wav) = }")
-        #logger.debug(f"Reader.main.process_text(): {json_wav[0:100] = }")
+        #logger.debug(f"TTS.main.process_text(): Sending chunk to queue")
+        #logger.debug(f"TTS.main.process_text(): {len(wav) = }")
+        #logger.debug(f"TTS.main.process_text(): {np.min(wav) = }")
+        #logger.debug(f"TTS.main.process_text(): {np.max(wav) = }")
+        #logger.debug(f"TTS.main.process_text(): {np.mean(wav) = }")
+        #logger.debug(f"TTS.main.process_text(): {type(json_wav) = }")
+        #logger.debug(f"TTS.main.process_text(): {json_wav[0:100] = }")
 
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
-        #logger.debug(f"Reader.main.process_text(): {response_time = :.2f}")
+        #logger.debug(f"TTS.main.process_text(): {response_time = :.2f}")
         if is_push_to_redis:
             redis_msg = json.dumps({
                                     "data": json_wav, 
@@ -709,15 +797,15 @@ def process_text(
                                     "message_group_id": None,
                                     "is_last_message": True
                                     })
-            #logger.debug(f"Reader.main.process_text(): {redis_msg = }")
+            #logger.debug(f"TTS.main.process_text(): {redis_msg = }")
             try:
                 redis_response = redis_conn.lpush("audio", redis_msg)
-                logger.debug(f"Reader.main.process_text(): {redis_response = }")
+                logger.debug(f"TTS.main.process_text(): {redis_response = }")
                 # If did not get an appropriate 
                 if not redis_response or redis_response < 0:
-                    logger.error("Reader.main.process_text(): Error sending audio to redis queue") 
+                    logger.error("TTS.main.process_text(): Error sending audio to redis queue") 
             except redis.exceptions.ConnectionError:
-                logger.error(f"Reader.main.process_text(): Error sending response to redis")
+                logger.error(f"TTS.main.process_text(): Error sending response to redis")
         
 
     #run_log = {
@@ -745,7 +833,7 @@ async def tts(message: Message):
 
 @app.post("/tts/")
 async def tts(message: Message):
-    logger.info(f"Reader.tts({message = })")
+    logger.info(f"TTS.tts({message = })")
     # Extract text from message
     text = message.text
     is_add_start_click = message.is_add_start_click
@@ -766,7 +854,7 @@ async def tts(message: Message):
     else: 
         wav = process_text(text, is_add_start_click=is_add_start_click, is_add_end_click=is_add_end_click, priority=message.priority, request_time=message.time, speed=speed, voice_clone=voice_clone)
 
-    logger.info(f"Reader.tts(): {type(wav)}")
+    logger.info(f"TTS.tts(): {type(wav)}")
 
     if isinstance(wav, NoneType) or (isinstance(wav, list) and len(wav) == 0):
         return {"message": "Error transcribing text", "wav": None, "rate" : str(24000)}
