@@ -40,6 +40,7 @@ nltk.download('punkt')
 from voicebox import VoiceBox
 from models.voice import Voice
 from models.retry import Retry
+from models.generated_audio import GeneratedAudio
 
 
 # Environment Variables
@@ -49,9 +50,11 @@ DATABASE_PASSWORD = os.environ.get('DATABASE_PASSWORD',"test")
 DATABASE_SCHEMA = os.environ.get('DATABASE_SCHEMA',"chat")
 DATABASE_HOST = os.environ.get('DATABASE_HOST',"192.168.1.4")
 # Init redis connection
-BM_TO_TTS_REDIS_HOST = os.environ['BM_TO_TTS_REDIS_HOST']
-BM_TO_TTS_REDIS_PORT = os.environ.get('BM_TO_TTS_REDIS_PORT', 6379)
-redis_conn = redis.Redis(host=BM_TO_TTS_REDIS_HOST, port=BM_TO_TTS_REDIS_PORT, decode_responses=True)
+REDIS_HOST = os.environ.get('REDIS_HOST', "127.0.0.1")
+REDIS_PORT = os.environ.get('REDIS_PORT', 6379)
+redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+
+port = os.environ.get("READER_PORT", 8100)
 
 # Logging config
 logging.basicConfig(
@@ -67,12 +70,14 @@ logging.getLogger("espeakng").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-
 UPLOAD_FOLDER = "data"
+DATA_FOLDER = "data"
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# TODO: Base these values off of the expected read speed for the selected voice. It should be 
+# based on some distance metric from this value and an expected variance. 
 # Set a lower bound on read speed, when the words per second are below this level there is a problem.
 read_speed_lower_threshold = 1.5
 # Set an upper bound. Often when the model skips words the read_speed will be too high.
@@ -92,6 +97,10 @@ except sqlalchemy.exc.ProgrammingError:
     pass
 try:
     Retry.__table__.create(engine)
+except sqlalchemy.exc.ProgrammingError:
+    pass
+try:
+    GeneratedAudio.__table__.create(engine)
 except sqlalchemy.exc.ProgrammingError:
     pass
 
@@ -123,62 +132,50 @@ class Message(BaseModel):
     time: str
     priority: str
     command: str = None
-    is_add_start_click: bool = False
-    is_add_end_click: bool = False
     speed: float = None
     voice_clone: Union[str,list] = None
 
-# Audio samples used by TTS
-audio_samples = [
-    "data/gits_3.wav",
-    "data/gits_2.wav",
-    "data/gits_2.wav",
-    "data/gits.wav"
-]
-
-
-data_folder = "data"
 
 #import os
 #for file in os.listdir("data/"):
 #    if file.endswith(".wav"):
 
 # TODO: Creat a more robust voice management system
-
 voice_catalogue = {
-    "major" : [
-        ["data/major/major_11.wav","data/major/major_12.wav","data/major/major_13.wav","data/major/major_2_02.wav"],
-        ["data/major/major_05.wav","data/major/major_06.wav","data/major/major_07.wav"],
-        ["data/major/major_2_01.wav","data/major/major_2_02.wav","data/major/major_2_03.wav"],
-        ["data/major/major_2_04.wav","data/major/major_2_05.wav","data/major/major_2_06.wav"],
-        ["data/major/major_06","data/major/major_2_05.wav","data/major/major_12.wav"]
-    ],
-    "trump" : [
-        ["data/trump/trump_11.wav","data/trump/trump_12.wav","data/trump/trump_13.wav","data/trump/trump_14.wav","data/trump/trump_15.wav","data/trump/trump_16.wav","data/trump/trump_17.wav","data/trump/trump_18.wav","data/trump/trump_19.wav","data/trump/trump_21.wav","data/trump/trump_22.wav","data/trump/trump_23.wav","data/trump/trump_24.wav","data/trump/trump_25.wav","data/trump/trump_26.wav","data/trump/trump_27.wav","data/trump/trump_28.wav","data/trump/trump_29.wav","data/trump/trump_30.wav",],
-        ["data/trump/trump_04.wav", "data/trump/trump_05.wav", "data/trump/trump_06.wav"],
-        ["data/trump/trump_07.wav", "data/trump/trump_09.wav", "data/trump/trump_10.wav"],
-        ["data/trump/trump_10.wav", "data/trump/trump_15.wav", "data/trump/trump_25.wav"],
-        ["data/trump/trump_07.wav", "data/trump/trump_09.wav", "data/trump/trump_13.wav"],
-    ],
-    "dsp" : [
-        ["data/dsp/dsp_07.wav","data/dsp/dsp_12.wav","data/dsp/dsp_13.wav","data/dsp/dsp_06.wav"],
-        ["data/dsp/dsp_01.wav","data/dsp/dsp_02.wav","data/dsp/dsp_03.wav","data/dsp/dsp_04.wav","data/dsp/dsp_05.wav","data/dsp/dsp_06.wav"],
-        ["data/dsp/dsp_07.wav","data/dsp/dsp_12.wav","data/dsp/dsp_13.wav"],
-        ["data/dsp/dsp_03.wav","data/dsp/dsp_04.wav","data/dsp/dsp_06.wav"],
-        ["data/dsp/dsp_05.wav","data/dsp/dsp_07.wav","data/dsp/dsp_.wav","data/dsp/dsp_06.wav"]
-    ]
- }
+    "major" : Voice(
+                voice_name="major", 
+                file_list=["data/major/major_11.wav","data/major/major_12.wav","data/major/major_13.wav","data/major/major_2_02.wav"],
+                fallback_file_list=glob.glob("data/major/" +'/*.wav', recursive=False),
+                default_speed=1.27,
+                expected_read_speed=3.0
+                ),
+    "trump" : Voice(
+                voice_name="trump", 
+                file_list=["data/trump/trump_11.wav","data/trump/trump_12.wav","data/trump/trump_13.wav","data/trump/trump_14.wav","data/trump/trump_15.wav","data/trump/trump_16.wav","data/trump/trump_17.wav","data/trump/trump_18.wav","data/trump/trump_19.wav","data/trump/trump_21.wav","data/trump/trump_22.wav","data/trump/trump_23.wav","data/trump/trump_24.wav","data/trump/trump_25.wav","data/trump/trump_26.wav","data/trump/trump_27.wav","data/trump/trump_28.wav","data/trump/trump_29.wav","data/trump/trump_30.wav"],
+                fallback_file_list=glob.glob("data/trump/" +'/*.wav', recursive=False),
+                default_speed=1.011,
+                expected_read_speed=2.0
+                ),
+    "dsp" : Voice(
+                voice_name="dsp", 
+                file_list=["data/dsp/dsp_07.wav","data/dsp/dsp_12.wav","data/dsp/dsp_13.wav","data/dsp/dsp_06.wav"],
+                fallback_file_list=glob.glob("data/dsp/" +'/*.wav', recursive=False),
+                default_speed=1.11,
+                expected_read_speed=2.5
+                ),
+}
 
 # Push voices in catalogue to db
 #try:
 session = SessionClass(expire_on_commit=False)
 for voice_name in voice_catalogue:
-    session.add(voice_catalogue[voice_name])
+    session.merge(voice_catalogue[voice_name])
 session.commit()
 #except:
 #    logger.error(f"TTS(): Could not push voice to db")
 
 session.close()
+
 
 
 @app.post("/upload")
@@ -238,7 +235,7 @@ async def upload_file(file: UploadFile = File(...)):
     )
     # Push new voice to db
     session = SessionClass(expire_on_commit=False)
-    session.add(voice_catalogue[upload_name])
+    session.merge(voice_catalogue[upload_name])
     session.commit()
     #except:
     #    logger.error(f"TTS(): Could not push voice to db")
@@ -259,23 +256,22 @@ async def test():
     return {"message": "All good"}
 
 
-@app.get("/chirp/")
-async def test():
-    """
-    Test pushing an audio file to the redis queue.
-    """
-    logger.debug(f"TTS.chirp()")
-    output = np.hstack((voice.click_on, voice.click_off))
-    push_to_queue(output)
-    return {"message": "Chirpped", "wav": json.dumps(output.tolist()), "rate" : str(24000)}
-
 @app.get("/get_voice_list/")
-async def test():
+async def get_voice_list():
     """
     Test return list of available voices.
     """
     logger.debug(f"TTS.get_voice_list()")
     return list(voice_catalogue.keys())
+
+
+@app.get("/get_voice_details/")
+async def get_voice_details(voice_name:str):
+    logger.debug(f"TTS.get_voice_details()")
+    if voice_name in voice_catalogue:
+        return json.dumps(voice_catalogue[voice_name].to_dict())
+    else:
+        return "Unknown voice"
 
 
 @app.post("/set-config/")
@@ -284,12 +280,12 @@ async def set_config(config: dict):
     Given a config dict similar to voicebox_config.json, update the live voicebox instance
     with the new config values.
     """
-    logger.debug(f"MessageQueue.set-config({config = })")
-    voice.config = config
-    voice.synth_params = config["synth_params"]
-    voice.silence_filter_params = config["silence_filter_params"]
+    logger.debug(f"TTS.set-config({config = })")
+    voice_box.config = config
+    voice_box.synth_params = config["synth_params"]
+    voice_box.silence_filter_params = config["silence_filter_params"]
     #voice.speaker_wav = config["vocoder"]["speaker_wav"]
-    voice.vocoder = config["vocoder"]
+    voice_box.vocoder = config["vocoder"]
     #voice.__init__(config=config)
     return {"message": "Config updated"}
 
@@ -478,14 +474,12 @@ def process_text(
         text:str, 
         is_push_to_redis:bool=False,
         push_chunks:bool=True, 
-        return_full:bool=False, 
-        is_add_start_click:bool=False,  
-        is_add_end_click:bool=False, 
+        return_full:bool=False,
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
         should_retry:bool=True,
-        voice_clone:str=None
+        voice_clone:str="major"
     ):
     """
     Given a block of text, run the text through the tts model and send the resulting wav to the audio redis queue.
@@ -500,10 +494,6 @@ def process_text(
         processing.
     return_full : bool
         When true will return the full wav output to the client that made the request.
-    is_add_start_click : bool
-        When true will add a mic click on noise at the start of the generated audio.
-    is_add_end_click : bool
-        When true will add a mic click off noise at the end of the generated audio.
     priority : str
         The priority that the message is assigned in the initial api call. 
         Passed to the ui to control which audio clips get played at each moment. 
@@ -565,16 +555,14 @@ def process_text(
         # Split the texts into individual sentences
         texts = sent_tokenize(text)
 
-
         # Recombine short sentences
         combined_sentences = []
         current_entry = texts[0]
-
         for i in range(1, len(texts)):
             current_length = len(current_entry.split())
             next_length = len(texts[i].split())
             
-            if current_length + next_length <= 20:  # Adjust the threshold as needed
+            if current_length + next_length <= 10:  # Adjust the threshold as needed
                 current_entry += " " + texts[i]
             else:
                 combined_sentences.append(current_entry.strip())
@@ -614,103 +602,18 @@ def process_text(
                     pause_length = 0.15
                 else:
                     pause_length = 0.05
-            #logging.debug(f"main.tts({chunk = })")
-
-            # Determine if should add a click on or off noise to the audio chunk
-            is_add_start_click_to_chunk = ((chunk_index==0) and is_add_start_click)
-            is_add_end_click_to_chunk = ((chunk_index==len(texts)-2) and is_add_end_click)
-
-            # Get wav from model
-            wav, rate, wavs = voice.read_text(
-                                        chunk, 
-                                        is_add_start_click=is_add_start_click_to_chunk, 
-                                        is_add_end_click=is_add_end_click_to_chunk,
-                                        speed=speed
-                                    )
             
-            # Check read speed
-            read_speed, read_length = voice.get_read_speed(chunk, wav)
-            logger.debug(f"Reader.process_text(): init {read_speed =  :.2f}")
-
-            # If read speed is outside valid range
-            if should_retry and (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                logger.warning(f"Reader.process_text(): Bad read speed detected : {read_speed =}")
-                init_speaker_wav = copy(voice.speaker_wav)
-                # Save initial and subsequent reads along with their read speed
-                all_reads = [
-                    {
-                        "read_speed" : read_speed,
-                        "wav" : wav
-                    }
-                ]
-                # Retry generating the output with different inputs
-                # TODO: Change params on each try to give a better shot of producing valid output
-                retry_attempt = 1
-                retry_attempts = 3
-                while (read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold):
-                    
-                    logger.warning(f"Reader.process_text(): Retrying generation {retry_attempt}/{retry_attempts}")
-                    # Select a different set of speaker wavs
-                    voice.speaker_wav = init_speaker_wav[retry_attempt]
-                    # Get audio output from TTS
-                    wav, rate, wavs = voice.read_text(
-                                        chunk, 
-                                        is_add_start_click=is_add_start_click_to_chunk, 
-                                        is_add_end_click=is_add_end_click_to_chunk,
-                                        speed=speed
-                                    )
-                    
-                    read_speed, read_length = voice.get_read_speed(text = chunk, wav = wav)
-                    # Save read
-                    all_reads.append(
-                        {
-                            "read_speed" : read_speed,
-                            "wav" : wav
-                        }
-                    )
-
-                    logger.debug(f"Reader.process_text(): {read_speed =  :.2f}")
-                    retry_attempt += 1
-                    if retry_attempt > retry_attempts: 
-                        break
-                    if retry_attempt >= len(init_speaker_wav): 
-                        break 
-
-                # Find the best read speed in each generated sample
-                logger.debug(f"Reader.process_text(): Selecting best wav out of {len(all_reads)}")
-                best_read_speed = -1
-                best_read_index = -1
-                for read_index in range(len(all_reads)):
-                    read_speed = all_reads[read_index]["read_speed"]
-                    if read_speed > best_read_speed and read_speed < read_speed_upper_threshold:
-                        best_read_speed = read_speed
-                        best_read_index = read_index
-                # If found a wav that met criteria
-                if best_read_index != -1:
-                    logger.debug(f"Reader.process_text(): Best wav on {read_index = } with {best_read_speed =}")
-                    wav = all_reads[best_read_index]["wav"]
-                else:
-                    logger.debug(f"Reader.process_text(): None of the reads met criteria")
-
-
-                # Reset back to original speaker wav
-                voice.speaker_wav = init_speaker_wav
-                
-                # If still has a bad read speed
-                if read_speed < read_speed_lower_threshold or read_speed > read_speed_upper_threshold:
-                    logger.error(f"Reader.process_text(): Could not generate valid audio for {chunk = }")
-                    #continue
-
-
+            wav, rate = get_tts_with_retry(text=chunk,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
+            
             # If should add pause
             if pause_length > 0.0:
                 # Append a pause to the wav
-                wav = np.hstack((wav, np.zeros(int(24000 * pause_length), dtype=float)))
+                wav = np.hstack((wav, np.zeros(int(24050 * pause_length), dtype=float)))
             
             # If should push individual chunks to redis
             if push_chunks:
                 # Normalize individual wav
-                wav = voice.normalize(wav)
+                wav = voice_box.normalize(wav)
                 #wav_T = wav.astype(float).tolist()
                 json_wav = wav.astype(float).tolist()
                 #logging.debug(f"main.tts(): Received output from model: {type(wav) = }")
@@ -763,7 +666,7 @@ def process_text(
         # Recombine wavs chunks
         wav = np.hstack(full_wav)
         # Normalize
-        wav = voice.normalize(wav)
+        wav = voice_box.normalize(wav)
 
     # Else just run the full text
     else:
@@ -812,6 +715,8 @@ def process_text(
     #    "id" : uuid4()
     #}
 
+
+
     return wav
 
 
@@ -836,8 +741,6 @@ async def tts(message: Message):
     logger.info(f"TTS.tts({message = })")
     # Extract text from message
     text = message.text
-    is_add_start_click = message.is_add_start_click
-    is_add_end_click = message.is_add_end_click
     speed = message.speed
     voice_clone = message.voice_clone
 
@@ -852,7 +755,7 @@ async def tts(message: Message):
         push_to_queue(wav=wav, rate=rate)
 
     else: 
-        wav = process_text(text, is_add_start_click=is_add_start_click, is_add_end_click=is_add_end_click, priority=message.priority, request_time=message.time, speed=speed, voice_clone=voice_clone)
+        wav = process_text(text, priority=message.priority, request_time=message.time, speed=speed, voice_clone=voice_clone)
 
     logger.info(f"TTS.tts(): {type(wav)}")
 
