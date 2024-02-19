@@ -108,7 +108,7 @@ except sqlalchemy.exc.ProgrammingError:
 # Init voicebox
 voice_box = VoiceBox(
             logger=logger, 
-            config_filename="voicebox_config.json"
+            config_filename="voicebox_config_tortoise.json"
 )
 
 # Init api

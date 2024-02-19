@@ -25,7 +25,7 @@ fastapi==0.65.1
 uvicorn==0.15.0
 deepspeed==0.12.3
 datasets==2.14.6
-tts==0.20.4
+#tts==0.20.4
 pydub
 sse_starlette==1.6.5
 APScheduler==3.10.4
@@ -35,3 +35,4 @@ anyio
 python-multipart
 sqlalchemy
 psycopg2-binary
+tortoise-tts
