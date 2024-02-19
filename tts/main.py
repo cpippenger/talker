@@ -671,9 +671,8 @@ def process_text(
     # Else just run the full text
     else:
         logger.debug(f"TTS.main.process_text(): Running full message")
-        wav, rate = get_tts_with_retry(text=chunk,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
-            
-
+        wav, rate = get_tts_with_retry(text=text,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
+        
         logger.debug(f"TTS.main.process_text(): Normalizing")
         wav = voice_box.normalize(wav)
         json_wav = wav.astype(float).tolist()
@@ -685,6 +684,7 @@ def process_text(
         #logger.debug(f"TTS.main.process_text(): {np.mean(wav) = }")
         #logger.debug(f"TTS.main.process_text(): {type(json_wav) = }")
         #logger.debug(f"TTS.main.process_text(): {json_wav[0:100] = }")
+
 
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
@@ -716,6 +716,21 @@ def process_text(
     #}
 
 
+    gen_audio = GeneratedAudio(
+        model_name=voice_box.config["model"]["name"],
+        voice_name=voice_clone,
+        text=text,
+        wav=wav
+    )
+
+    # Push new voice to db
+    session = SessionClass(expire_on_commit=True)
+    session.add(gen_audio)
+    session.commit()
+    #except:
+    #    logger.error(f"TTS(): Could not push voice to db")
+
+    session.close()
 
     return wav
 
