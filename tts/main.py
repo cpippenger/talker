@@ -223,7 +223,7 @@ async def upload_file(file: UploadFile = File(...)):
     wav_files = []
     for root, dirs, files in os.walk(extract_folder):
         for file in files:
-            if file.lower().endswith(".wav"):
+            if file.lower().endswith(".wav") and not file.startswith("."):
                 wav_files.append(f"{extract_folder}/{file}")
     
     voice_catalogue[upload_name] = Voice(
@@ -371,7 +371,7 @@ def push_to_queue(
 
 def get_tts_with_retry(
         text:str,
-        should_retry:bool=True,
+        should_retry:bool=False,
         speed:float=1.01,
         voice_clone:str="major",
         is_log_retries:bool=True
@@ -478,7 +478,7 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=True,
+        should_retry:bool=False,
         voice_clone:str="major"
     ):
     """

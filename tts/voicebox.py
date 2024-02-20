@@ -493,6 +493,8 @@ class VoiceBox():
             # Use speed from config
             speed = self.config["vocoder"]["speed_up"]
         
+        #if init_read_speed < upper
+        
         # Set the speed adjustment based on initial read speed
         #if init_read_speed < 0.8:
         #    speed = speed + (speed * 0.15)
@@ -505,7 +507,7 @@ class VoiceBox():
         # TODO: Return the initial wav file before post processing to evaluate the effect on audio quality
         #orig_wav = copy(wav)
         # Apply post processing
-        wav = self.apply_post_processing(wav, speed=speed, volume=volume)
+        #wav = self.apply_post_processing(wav, speed=speed, volume=volume)
 
         # If ran on gpu
         #if "cuda" in self.config["model"]["device"]:
