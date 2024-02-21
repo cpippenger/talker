@@ -116,9 +116,6 @@ class VoiceBox():
         self.logger.debug(f"{__class__.__name__}.init(): Complete at {self.start_time}")
 
 
-    #def get_speaker_wav(retry_index:int=None):
-
-
     def load_config(self, config_filename:str="voicebox_config.json"):
         # Load config file
         #try:
