@@ -18,6 +18,9 @@ import tempfile
 from models.super_chat import SuperChat
 import numpy as np
 from scipy.io.wavfile import write
+from elevenlabs import voices, generate
+
+
 # Logging config
 logging.basicConfig(
     #filename='DockProc.log',
@@ -89,6 +92,14 @@ def coq_tts(message,filename):
     return filename
 
 
+def eleven_tts (message,filename,voice):
+    audio = generate(
+          # api_key="YOUR_API_KEY", (Defaults to os.getenv(ELEVEN_API_KEY))
+          text=message,
+          voice=voice,
+          model="eleven_multilingual_v2")
+    open(filename, 'wb').write(audio)
+    return filename
 
 
 
@@ -110,7 +121,8 @@ def get_swc_endpoints():
             new_endpoints.update({
     "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
     "fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
-    "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose" 
+    "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose",
+    "11tts_Rachel" : lambda str_message,str_filename: eleven_tts(str_message,str_filename,"Rachel")
     })
     return new_endpoints
 endpoints=get_swc_endpoints()
