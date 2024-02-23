@@ -34,8 +34,11 @@
 		var global_autoplay=false;
 		var global_queue = [];
 		
-		
-		function play(element) {
+		function mark_read(element) {
+			$( element ).removeClass( "bg-info" );			
+			  $( element ).addClass( "not_selected" );			
+		}
+		function play(element,autoplay=true) {
 			$( ".selected" ).each(function() {
 			  $( this ).removeClass( "selected" );
 			  $( this ).addClass( "not_selected" );
@@ -49,7 +52,10 @@
 			$(element).removeClass('not_selected');
 			$(element).addClass('selected');
 			$('#player')[0].load();
-			$('#player')[0].play();
+			if (autoplay)
+			{
+				$('#player')[0].play();
+			}
 		}  
 
 		function toggle_autoplay(){
@@ -136,7 +142,7 @@
 					} else {
 						row.onclick = function ()
 						{
-							play(this);
+							play(this,false);
 						}
 						row.setAttribute("tts_file",super_chats[key]["tts_file"]);
 					}
@@ -145,9 +151,12 @@
 					p = document.createElement("p");
 					p.classList.add("p-3","m-0");
 					$(p).text(super_chats[key]["datetime_uploaded"].slice(0,-10) + ' | ' + super_chats[key]["amount"]   + ' | ' + super_chats[key]["username"] + ' | ' +   super_chats[key]["text"] + error_string);					
-
 					row.appendChild(sm_col);
 					sm_col.appendChild(p);
+
+					
+					
+					
 					document.getElementById('superchats').appendChild(row);
 					
 					global_last_seen=super_chats[key]["datetime_uploaded"];
