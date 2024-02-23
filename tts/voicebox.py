@@ -7,18 +7,16 @@ import numpy as np
 import torch
 import nltk
 from nltk.tokenize import sent_tokenize
-#from speechbrain.pretrained import Tacotron2
-#from speechbrain.pretrained import HIFIGAN
-#from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
-from TTS.tts.models.xtts import Xtts
-from TTS.utils.manage import ModelManager
-from TTS.tts.configs.xtts_config import XttsConfig
-from TTS.api import TTS
+#from TTS.tts.models.xtts import Xtts
+#from TTS.utils.manage import ModelManager
+#from TTS.tts.configs.xtts_config import XttsConfig
+#from TTS.api import TTS
 from datasets import load_dataset
 from pydub import AudioSegment
 import numpy as np   
 import soundfile as sf
 from scipy.io.wavfile import read
+
 
 
 class VoiceBox():
@@ -148,6 +146,8 @@ class VoiceBox():
 
         # If using fine-tuned voice model
         if self.model_name == "xtts_v1.1":
+            from TTS.tts.models.xtts import Xtts
+            from TTS.tts.configs.xtts_config import XttsConfig
             self.logger.debug(f"{__class__.__name__}.init_model(): Init xtts model")
             # Download model
             #ModelManager().download_model("tts_models/multilingual/multi-dataset/xtts_v1.1")
@@ -173,7 +173,11 @@ class VoiceBox():
                 self.logger.debug(f"{__class__.__name__}.init_model(): Sending model to gpu")
                 self.model.cuda()
 
-        if self.model_name == "xtts_v2":
+        elif self.model_name == "xtts_v2":
+            from TTS.tts.models.xtts import Xtts
+            #from TTS.utils.manage import ModelManager
+            from TTS.tts.configs.xtts_config import XttsConfig
+            #from TTS.api import TTS
             self.logger.debug(f"{__class__.__name__}.init_model(): Init xtts model")
             # Download model
             #ModelManager().download_model("tts_models/multilingual/multi-dataset/xtts_v2")
@@ -200,8 +204,14 @@ class VoiceBox():
                 self.logger.debug(f"{__class__.__name__}.init_model(): Sending model to gpu")
                 self.model.cuda()
 
+        elif self.model_name == "tortoise":
+            from tortoise.api import TextToSpeech
+            self.model = TextToSpeech(use_deepspeed=True, kv_cache=True, device="cuda:0")
+
         # Else using Tacotron model
         elif self.model_name == "hf-tacotron2":
+            from speechbrain.pretrained import Tacotron2
+            from speechbrain.pretrained import HIFIGAN
             # Read config parameters
             model_config = self.config["models"][model_name]
             model_name = self.config["model"]["name"]
@@ -216,6 +226,7 @@ class VoiceBox():
 
         # Else using a t5 model
         elif self.model_name == "speecht5_tts":
+            from transformers import SpeechT5Processor, SpeechT5ForTextToSpeech, SpeechT5HifiGan
             speaker_id = 1300
             self.processor = SpeechT5Processor.from_pretrained("microsoft/speecht5_tts")
             self.model = SpeechT5ForTextToSpeech.from_pretrained("microsoft/speecht5_tts")
@@ -271,6 +282,28 @@ class VoiceBox():
             
             return wav, 24050
         
+        elif self.model_name == "tortoise":
+            self.logger.debug(f"{__class__.__name__}.tts(): Running tortoise model")
+            from tortoise.utils.audio import load_audio
+            reference_clips = [load_audio(p, 22050) for p in self.speaker_wav]
+            #self.logger.debug(f"{__class__.__name__}.tts(): Using reference clips: {self.speaker_wav}")
+
+            pcm_audio = self.model.tts_with_preset(text, voice_samples=reference_clips, preset=self.config["model"]["preset"])
+
+            audio_parts = []
+            for candidate_idx, audio in enumerate([pcm_audio]):
+                audio = audio.squeeze(0).cpu()
+                if candidate_idx == 0:
+                    audio_parts.append(audio) 
+            audio = torch.cat(audio_parts, dim=-1)
+
+            self.logger.debug(f"{__class__.__name__}.tts(): {type(audio) = }")
+            self.logger.debug(f"{__class__.__name__}.tts(): {audio.shape = }")
+
+            wav = audio.numpy()[0]
+
+            return wav, 24050
+
         # IF using Tacotron model
         elif self.model_name == "hf-tacotron2":
             self.logger.debug(f"{__class__.__name__}.tts(): Running tacotron model {self.model_name = }")
@@ -460,6 +493,8 @@ class VoiceBox():
             # Use speed from config
             speed = self.config["vocoder"]["speed_up"]
         
+        #if init_read_speed < upper
+        
         # Set the speed adjustment based on initial read speed
         #if init_read_speed < 0.8:
         #    speed = speed + (speed * 0.15)
@@ -472,7 +507,7 @@ class VoiceBox():
         # TODO: Return the initial wav file before post processing to evaluate the effect on audio quality
         #orig_wav = copy(wav)
         # Apply post processing
-        wav = self.apply_post_processing(wav, speed=speed, volume=volume)
+        #wav = self.apply_post_processing(wav, speed=speed, volume=volume)
 
         # If ran on gpu
         #if "cuda" in self.config["model"]["device"]:

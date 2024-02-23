@@ -108,7 +108,7 @@ except sqlalchemy.exc.ProgrammingError:
 # Init voicebox
 voice_box = VoiceBox(
             logger=logger, 
-            config_filename="voicebox_config.json"
+            config_filename="voicebox_config_tortoise.json"
 )
 
 # Init api
@@ -223,7 +223,7 @@ async def upload_file(file: UploadFile = File(...)):
     wav_files = []
     for root, dirs, files in os.walk(extract_folder):
         for file in files:
-            if file.lower().endswith(".wav"):
+            if file.lower().endswith(".wav") and not file.startswith("."):
                 wav_files.append(f"{extract_folder}/{file}")
     
     voice_catalogue[upload_name] = Voice(
@@ -371,7 +371,7 @@ def push_to_queue(
 
 def get_tts_with_retry(
         text:str,
-        should_retry:bool=True,
+        should_retry:bool=False,
         speed:float=1.01,
         voice_clone:str="major",
         is_log_retries:bool=True
@@ -478,7 +478,7 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=True,
+        should_retry:bool=False,
         voice_clone:str="major"
     ):
     """
@@ -671,9 +671,8 @@ def process_text(
     # Else just run the full text
     else:
         logger.debug(f"TTS.main.process_text(): Running full message")
-        wav, rate = get_tts_with_retry(text=chunk,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
-            
-
+        wav, rate = get_tts_with_retry(text=text,should_retry=should_retry, speed=speed, voice_clone=voice_clone)
+        
         logger.debug(f"TTS.main.process_text(): Normalizing")
         wav = voice_box.normalize(wav)
         json_wav = wav.astype(float).tolist()
@@ -685,6 +684,7 @@ def process_text(
         #logger.debug(f"TTS.main.process_text(): {np.mean(wav) = }")
         #logger.debug(f"TTS.main.process_text(): {type(json_wav) = }")
         #logger.debug(f"TTS.main.process_text(): {json_wav[0:100] = }")
+
 
         # TODO: rename time to audio_queue time, add init_time
         response_time = time.time()
@@ -716,6 +716,21 @@ def process_text(
     #}
 
 
+    gen_audio = GeneratedAudio(
+        model_name=voice_box.config["model"]["name"],
+        voice_name=voice_clone,
+        text=text,
+        wav=wav
+    )
+
+    # Push new voice to db
+    session = SessionClass(expire_on_commit=True)
+    session.add(gen_audio)
+    session.commit()
+    #except:
+    #    logger.error(f"TTS(): Could not push voice to db")
+
+    session.close()
 
     return wav
 
