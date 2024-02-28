@@ -140,12 +140,20 @@ class Conversation():
             memory_insert_count += 1
             if memory_insert_count > self.max_memory_insert_size:
                 break
+
+        chat_history_prompt = chat_history.prompt()
+
+        if len(chat_history_prompt.split(" ")) > 2048:
+            logging.info(f"{__class__.__name__}.{__name__}(): Reducing size of chat history")
+            chat_history_prompt = chat_history_prompt.split(" ")[0:2048]
+            chat_history_prompt = " ".join(chat_history_prompt)
+
         if self.model_type == "pygmalion":
             prompt = f"{self.robot.name}'s Persona: {self.robot.persona}\n"
             prompt += "<START>\n"
             #prompt += "[DIALOGUE HISTORY]"       
             # Dialogue history
-            prompt += chat_history.prompt()
+            prompt += chat_history_prompt
         
             # Randomly add things to prompt to steer conversation
             #if random() > 0.75:
@@ -155,11 +163,12 @@ class Conversation():
             
             # Robot name prompt
             prompt += f"{self.robot.name}:"
+
         elif self.model_type == "mytho":
             prompt = f"<System prompt/Character Card>\n"
             prompt += "### Instruction:\n"
-            prompt += "Write Billy's next reply in a chat between Alec and Billy. Write a single reply only.\n"
-            prompt += chat_history.prompt()
+            prompt += f"Write {self.robot.name}'s next reply in a chat between {commentor} and {self.robot.name}. Write a single reply only.\n"
+            prompt += chat_history_prompt
             prompt += "### Response:"
 
         
@@ -228,8 +237,8 @@ class Conversation():
         logging.info("-"*100)
 
         # Randomize length of response
-        min_len = 32 + int(32 * random()) + response_length_modifier
-        max_len = 128 + int(1024 * random()) + response_length_modifier
+        min_len = 16 + int(16 * random()) + response_length_modifier
+        max_len = 64 + int(64 * random()) + response_length_modifier
 
         # Generate output from the robot given the prompt
         outputs = self.robot.get_robot_response(commentor, prompt, min_len=min_len, max_len=max_len, response_count=response_count)
@@ -312,7 +321,7 @@ class Conversation():
 
     def tts(self, text):
         
-        payload = {'text': text, 'time': 'time', 'priority' : "100.0"}
+        payload = {'text': text, 'time': 'time', 'priority' : "100.0", "speed" : 1.27, "voice_clone" : "major"}
         
         start_time = time.time()
         r = requests.post(f"http://{self.voice_ip}:{self.voice_port}/tts", data=json.dumps(payload))
@@ -402,6 +411,9 @@ class ChatHistory():
     def prompt(self):
         out_str = ""
         for comment in self.dialogue:
+            #if len(comment.prompt()) > 512:
+            #    out_str += comment.prompt()[0:512]
+            #else:
             out_str += comment.prompt()
             out_str += " \n"
         return out_str

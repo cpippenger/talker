@@ -12,11 +12,11 @@ from transformers import  GenerationConfig
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, StoppingCriteriaList
 
 from numpy.random import random, choice
-from fairseq.checkpoint_utils import load_model_ensemble_and_task_from_hf_hub
-from fairseq.models.text_to_speech.hub_interface import TTSHubInterface
+#from fairseq.checkpoint_utils import load_model_ensemble_and_task_from_hf_hub
+#from fairseq.models.text_to_speech.hub_interface import TTSHubInterface
 
-from speechbrain.pretrained import Tacotron2
-from speechbrain.pretrained import HIFIGAN
+#from speechbrain.pretrained import Tacotron2
+#from speechbrain.pretrained import HIFIGAN
 
 from nltk.tokenize import sent_tokenize
 
@@ -34,6 +34,43 @@ from tts.voicebox import VoiceBox
 # output from the dialogue model and complete the
 # sentence.
 
+replace_list = [
+    ("'", "'"),
+    ("We're", "We are"),
+    ("we're", "we are"),
+    ("it's", "it is"),
+    ("It's", "It is"),
+    ("I'll", "I will"),
+    ("i'll", "i will"),
+    ("Major: nse", "Major: "),
+    ("nse\\n", ""),
+    (" nse", ""),
+    ("Major \\n\\n", ""),
+    ("Major \\n", ""),
+    ("\\n\\n", ""),
+    ("""Major: nse\\n Major """, "Major: "),
+    ("one:", "one"),
+    ("two:", "two"),
+    ("three:", "three"),
+    ("four:", "four"),
+    ("five:", "five"),
+    ("six:", "six"),
+    ("seven:", "seven"),
+    ("eight:", "eight"),
+    ("nine:", "nine"),
+    ("ten:", "ten"),
+    ("\\n\\none.", "one"),
+    ("\\n\\ntwo.", "two"),
+    ("\\n\\nthree.", "three"),
+    ("\\n\\nfour.", "four"),
+    ("\\n\\nfive.", "five"),
+    ("\\n\\nsix.", "six"),
+    ("\\n\\nseven.", "seven"),
+    ("\\n\\neight.", "eight"),
+    ("\\n\\nnine.", "nine"),
+    ("\\n\\nten.", "ten"),
+]
+remove_list = ["#", "*", "</s>", "@", "$", "%", "^", "&", "*", "(", ")", ",", "<unk>", ":"]
 
 class Robot():
     def __init__(self, 
@@ -53,6 +90,8 @@ class Robot():
         self.stopping_words = [
                               #"You: ", 
                               f"{self.name}: ", 
+                              f"\n{self.name}: ", 
+                              f"\n {self.name}: ", 
                               f"{self.name[0]}: ", 
                               "<BOT>", 
                               "</BOT>",
@@ -271,7 +310,7 @@ class Robot():
                 tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
 
         # Create stopping criteria for generation
-        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:", f"{person[0]}:"]
+        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:", f"{person[0]}:",  f"\n{person}:"]
         stopping_list = []
         for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(
@@ -347,6 +386,12 @@ class Robot():
             # Filter own name prompts
             output = output.replace("lly:", "")
             output = output.replace("Bi ", "")
+
+            # Filter text
+            for item in replace_list:
+                output = output.replace(item[0], item[1])
+            for item in remove_list:
+                output = output.replace(item,"")
             #logging.info(f"{__class__.__name__}.get_robot_response(): Before output processing = {output}")
             # Count tokens in output
             token_count = len(output.split(" "))

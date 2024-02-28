@@ -507,7 +507,7 @@ class VoiceBox():
         # TODO: Return the initial wav file before post processing to evaluate the effect on audio quality
         #orig_wav = copy(wav)
         # Apply post processing
-        #wav = self.apply_post_processing(wav, speed=speed, volume=volume)
+        wav = self.apply_post_processing(wav, speed=speed, volume=volume)
 
         # If ran on gpu
         #if "cuda" in self.config["model"]["device"]:
