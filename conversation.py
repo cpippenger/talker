@@ -177,7 +177,7 @@ class Conversation():
             prompt = f"<|im_start|>system\n"
             prompt += f"""You are {self.robot.name}, {self.robot.persona}\n"""
             prompt += chat_history_prompt
-            prompt += f"#{self.robot.name}:"
+            prompt += f"{self.robot.name}:"
 
         
         return prompt

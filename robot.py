@@ -45,11 +45,22 @@ replace_list = [
     ("I'll", "I will"),
     ("i'll", "i will"),
     ("Major: nse", "Major: "),
+    ("Major: jorjorjor", "Major: "),
+    ("Major: jorjor", "Major: "),
+    ("Major: jor jor", "Major: "),
+    ("Major: jor jor", "Major: "),
+    ("Major: jor", "Major: "),
+    ("jorjorjorjor", ""),
+    ("jorjorjor", ""),
+    (" jor jorjor ", ""),
+    ("jor ororj", ""),
+    ("jorjor", ""),
     (" jor jor jor jor jor ", ""),
     (" jor jor jor jor ", ""),
     (" jor jor jor ", ""),
     (" jor jor ", ""),
     (" jor ", ""),
+    ("jorjj", ""),
     ("nse\n", ""),
     (" nse", ""),
     ("Major \n\n", ""),
@@ -97,6 +108,7 @@ class Robot():
         self.stopping_words = [
                               #"You: ", 
                               f"{self.name}: ", 
+                              f"\n{self.name} ", 
                               f"\n{self.name}: ", 
                               f"\n {self.name}: ", 
                               f"{self.name[0]}: ", 
@@ -131,9 +143,12 @@ class Robot():
         }
         self.max_generation_time = 10
         self.init_models()
-        replace_list.append(
+        replace_list.extend([
+            (f"{self.name} jor", " "),
             (f"{self.name}: jor", f"{self.name}: "),
             (f"{self.name}: jor jor", f"{self.name}: "),
+            (f"Major: jor jor", f"{self.name}: ")
+        ]
         )
 
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
@@ -364,7 +379,7 @@ class Robot():
                                              eos_token_id=self.tokenizer.eos_token_id,
                                              bos_token_id=self.tokenizer.bos_token_id,
                                              pad_token_id=self.tokenizer.pad_token_id,
-                                             max_time=12,
+                                             max_time=6,
                                              
         )
 
