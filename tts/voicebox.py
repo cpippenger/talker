@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import nltk
 from nltk.tokenize import sent_tokenize
+from nltk.tokenize import word_tokenize
 #from TTS.tts.models.xtts import Xtts
 #from TTS.utils.manage import ModelManager
 #from TTS.tts.configs.xtts_config import XttsConfig
@@ -377,6 +378,15 @@ class VoiceBox():
         return (arr - arr.min(axis=0)) / (arr.max(axis=0) - arr.min(axis=0))
     
 
+
+    def chunk_text(text:str, max_words:int=30):
+        # If text is long        
+        if word_tokenize(text) > max_words:
+
+            # Try to split on sentences
+            text_split = sent_tokenize(text)
+
+
     def read_text(
             self, 
             text:str,
@@ -413,14 +423,24 @@ class VoiceBox():
             self.logger.debug(f"VoiceBox.read_text(): Splitting long text {text}")
             self.logger.debug(f"{__class__.__name__}.read_text(): Splitting text")
             #text_split = text.split(".") 
+            # Split on sentences
             text_split = sent_tokenize(text)
             new_text_split =  []
             for sentence in text_split:
-                if len(sentence) < 120:
+                # If the sentence is short enough
+                if len(word_tokenize(sentence)) < 30:
+                    # Add it to the list
                     new_text_split.append(sentence)
                     continue
-                sentences = sentence.split("\n")
-                new_text_split.extend(sentences)
+                # Else need to break the sentence down in some way
+                # If has a newline
+                if "\\n" in sentence:
+                    # Split on that
+                    sentences = sentence.split("\\n")
+                    new_text_split.extend(sentences)
+                    continue
+                
+                
                 #for new_sentence in sentences:
             text_split = new_text_split
             # Save each sentence wav

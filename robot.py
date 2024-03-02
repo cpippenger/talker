@@ -5,6 +5,7 @@ import torch
 import num2words
 import pickle
 import logging
+from copy import copy
 #from accelerate import init_empty_weights
 import transformers
 from transformers import BitsAndBytesConfig
@@ -19,6 +20,7 @@ from numpy.random import random, choice
 #from speechbrain.pretrained import HIFIGAN
 
 from nltk.tokenize import sent_tokenize
+from nltk.tokenize import word_tokenize
 
 from color import Color
 
@@ -43,11 +45,16 @@ replace_list = [
     ("I'll", "I will"),
     ("i'll", "i will"),
     ("Major: nse", "Major: "),
-    ("nse\\n", ""),
+    (" jor jor jor jor jor ", ""),
+    (" jor jor jor jor ", ""),
+    (" jor jor jor ", ""),
+    (" jor jor ", ""),
+    (" jor ", ""),
+    ("nse\n", ""),
     (" nse", ""),
-    ("Major \\n\\n", ""),
-    ("Major \\n", ""),
-    ("\\n\\n", ""),
+    ("Major \n\n", ""),
+    ("Major \n", ""),
+    ("\n\n", ""),
     ("""Major: nse\\n Major """, "Major: "),
     ("one:", "one"),
     ("two:", "two"),
@@ -124,6 +131,10 @@ class Robot():
         }
         self.max_generation_time = 10
         self.init_models()
+        replace_list.append(
+            (f"{self.name}: jor", f"{self.name}: "),
+            (f"{self.name}: jor jor", f"{self.name}: "),
+        )
 
         #logging.info(f"{__class__.__name__}.{__name__}(): Init voice model")
 
@@ -310,7 +321,13 @@ class Robot():
                 tokenized_items["attention_mask"] = torch.cat((tokenized_items["attention_mask"], tokenized_items["attention_mask"].clone()), dim=0)
 
         # Create stopping criteria for generation
-        stopping_words = self.stopping_words + [f"{person}:", f"{person.upper()}:", f"{person[0]}:",  f"\n{person}:"]
+        stopping_words = copy(self.stopping_words)
+        stopping_words.extend([
+                            f"\n{person} ", 
+                            f"\n{person}:", 
+                            f"{person}:", 
+                            f"{person.upper()}:",  
+        ])
         stopping_list = []
         for stopping_word in stopping_words:
             stopping_list.append(_SentinelTokenStoppingCriteria(

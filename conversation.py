@@ -59,6 +59,8 @@ class Conversation():
             self.model_type = "pygmalion"
         elif "mytho" in robot.model_name.lower():
             self.model_type = "mytho"
+        elif "mistral" in robot.model_name.lower():
+            self.model_type = "mistral"
 
         #self.dbc = DataBaseController()
         
@@ -170,6 +172,12 @@ class Conversation():
             prompt += f"Write {self.robot.name}'s next reply in a chat between {commentor} and {self.robot.name}. Write a single reply only.\n"
             prompt += chat_history_prompt
             prompt += "### Response:"
+
+        elif self.model_type == "mistral":
+            prompt = f"<|im_start|>system\n"
+            prompt += f"""You are {self.robot.name}, {self.robot.persona}\n"""
+            prompt += chat_history_prompt
+            prompt += f"#{self.robot.name}:"
 
         
         return prompt
