@@ -32,6 +32,21 @@ services:
       - ./db/data:/data
 
 
+  chat_api:
+    build:
+      context: chat_api
+      dockerfile: Dockerfile
+    container_name: chat_api
+    #command: bash -c 'while !</dev/tcp/docker.for.mac.localhost/5432; do sleep 1; done;'
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgres://test:test@postgres/chat
+    ports:
+      - "5001:5001"
+
+
+
   app:
     build:
       context: app
