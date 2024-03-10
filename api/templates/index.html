@@ -88,7 +88,7 @@
 			console.log("ended");
 			if(global_queue.length > 0 )
 			{
-				play(document.getElementById(global_queue.shift()))
+				play($(document.getElementById(global_queue.shift())).find('a')[0])
 			}
 			
 		}
@@ -313,9 +313,9 @@ $( document ).ready(function() {
       <div class="modal-body">
        <p> NewTTS <a  href='/clear-all'>&nbsp;Clear All&nbsp; </a></p>
 		<p id="newttsoutput" ></p>
-		Username: <input id='newtts_name' name="username" /><br />
-		Amount: <input id="newtts_amount" /><br />
-	   Text: <input id="newtts_text" /><br />
+		Username: <input id='newtts_name' name="username" required /><br />
+		Amount: <input id="newtts_amount" required  /><br />
+	   Text: <input id="newtts_text"  required  /><br />
 	   <button onclick="newTTS()" >test</button>
 
 
