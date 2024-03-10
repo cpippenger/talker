@@ -38,6 +38,16 @@
 			$( element ).removeClass( "bg-info" );			
 			  $( element ).addClass( "not_selected" );			
 		}
+		
+		function delete_row(element){
+		if (window.confirm("Do you really want to delete this row?")) {
+			parent_element=$(element).parent().parent().parent()
+			localStorage.setItem( 'deleted_' + $(parent_element).attr('id'), Date.now());
+			$(parent_element).remove()
+		}
+
+		}
+		
 		function play(element,autoplay=true) {
 			$( ".selected" ).each(function() {
 			  $( this ).removeClass( "selected" );
@@ -45,12 +55,13 @@
 			});
 
 			//$('#player_source')[0].src = "/cache/" + element.id;
-			localStorage.setItem(element.id, Date.now());
+			localStorage.setItem( 'seen_' + $(element).parent().parent().parent().attr('id'), Date.now());
 			console.log(element.getAttribute('tts_file'));
 			$('#player_source')[0].src = element.getAttribute('tts_file');
-			$(element).removeClass('bg-info');
-			$(element).removeClass('not_selected');
-			$(element).addClass('selected');
+			element_parent=$(element).parent().parent().parent()
+			$(element_parent).removeClass('bg-info');
+			$(element_parent).removeClass('not_selected');
+			$(element_parent).addClass('selected');
 			$('#player')[0].load();
 			if (autoplay)
 			{
@@ -123,47 +134,78 @@
 			  super_chats=JSON.parse(result);
 			  output="";
 				for ( key in super_chats) {
-					console.log(super_chats[key]["id"]);
-					row = document.createElement("div");
-					row.classList.add("row", "border-top-3", "rounded-5","my-3");
-					if(localStorage.getItem(super_chats[key]["id"]) == null){
-						row.classList.add('bg-info')
-					} else {
-						row.classList.add('not_selected') // need to get the naming convention standard evrywhere
-					};
-					row.id=super_chats[key]["id"];
-					error_string=""
-					if(/^ERROR:/.test(super_chats[key]["tts_file"])) // this is jank, need better
-					{
-						$(row).removeClass("bg-info");
-						$(row).addClass("bg-warning")
-						error_string=" (" + super_chats[key]["tts_file"] + ")"
-						
-					} else {
-						row.onclick = function ()
-						{
-							play(this,false);
-						}
-						row.setAttribute("tts_file",super_chats[key]["tts_file"]);
-					}
-					sm_col = document.createElement("div");
-					sm_col.classList.add("col-sm");					
-					p = document.createElement("p");
-					p.classList.add("p-3","m-0");
-					$(p).text(super_chats[key]["datetime_uploaded"].slice(0,-10) + ' | ' + super_chats[key]["amount"]   + ' | ' + super_chats[key]["username"] + ' | ' +   super_chats[key]["text"] + error_string);					
-					row.appendChild(sm_col);
-					sm_col.appendChild(p);
+					if(localStorage.getItem('deleted_' + super_chats[key]["id"]) == null){
+						console.log(super_chats[key]["id"]);
+						row = document.createElement("div");
+						row.classList.add("row", "border-top-3", "rounded-5","my-3");						
+						if(localStorage.getItem('seen_' + super_chats[key]["id"]) == null){
+							row.classList.add('bg-info')
+						} else {
+							row.classList.add('not_selected') // need to get the naming convention standard evrywhere
+						};
+						row.id=super_chats[key]["id"];
+						error_string=""
+						//i know this is aout of place
 
-					
-					
-					
-					document.getElementById('superchats').appendChild(row);
-					
-					global_last_seen=super_chats[key]["datetime_uploaded"];
-					if(global_autoplay == true) {
-						global_queue.push(super_chats[key]["id"]);
+						if(/^ERROR:/.test(super_chats[key]["tts_file"])) // this is jank, need better
+						{
+							$(row).removeClass("bg-info");
+							$(row).addClass("bg-warning")
+							error_string=" (" + super_chats[key]["tts_file"] + ")"
+							
+						} 
+						sm_col = document.createElement("div");
+						sm_col.classList.add("col-sm");
+						// toolbar
+						sm_col2 = document.createElement("div");
+						sm_col2.classList.add("col-sm");
+						sm_col2_p = document.createElement("p");
+						sm_col2_p.classList.add("p-3","m-0");
+
+						play_button = document.createElement("a");
+						$(play_button).addClass('bg-success')
+						$(play_button).addClass('text-light')
+						play_button.setAttribute("tts_file",super_chats[key]["tts_file"])
+						$(play_button).text("PLAY")
+
+						delete_button = document.createElement("a");
+						$(delete_button).addClass('bg-danger')
+						$(delete_button).addClass('text-light')
+						$(delete_button).addClass('mx-4')
+						delete_button.setAttribute("tts_file",super_chats[key]["tts_file"])
+						$(delete_button).text("DELETE")
+
+						delete_button.onclick = function ()
+							{
+								delete_row(this);
+							}
+
+						
+						play_button.onclick = function ()
+							{
+								play(this);
+							}
+						sm_col2_p.append(play_button)
+						sm_col2_p.append(delete_button)
+						sm_col2.append(sm_col2_p)
+
+						p = document.createElement("p");
+						p.classList.add("p-3","m-0");
+						$(p).text(super_chats[key]["datetime_uploaded"].slice(0,-10) + ' | ' + super_chats[key]["amount"]   + ' | ' + super_chats[key]["username"] + ' | ' +   super_chats[key]["text"] + error_string);					
+						row.appendChild(sm_col);
+						//sm_col.appendChild(play_button);
+						sm_col.appendChild(p);
+						row.appendChild(sm_col2); 
+
+						document.getElementById('superchats').appendChild(row);
+						
+						global_last_seen=super_chats[key]["datetime_uploaded"];
+						if(global_autoplay == true) {
+							global_queue.push(super_chats[key]["id"]);
+						}
+					} else {
+						console.log('found deleted')
 					}
-					
 				}
 				$("#superchats").append(output);
 				if(global_autoplay == true)
@@ -190,14 +232,19 @@
 		
 	function update_default(element)
 		{
-			$.ajax({url: "/update-default?name="+element.options[element.selectedIndex].text});
-			
+			$.ajax({url: "/update-default?name="+element.options[element.selectedIndex].text});			
+			$($('#player')[0]).attr('poster','/get_avatar?name=' + element.options[element.selectedIndex].text)
 		}
 $( document ).ready(function() {
     get_superchats(null);
-				const interval = setInterval(function() {
-				   get_superchats(global_last_seen);
-				 }, 5000);	
+	const interval = setInterval(function() {
+		   get_superchats(global_last_seen);
+	 }, 5000);
+
+	console.log($('#floatingSelect')[0].options[$('#floatingSelect')[0].selectedIndex].text)	
+	$($('#player')[0]).attr('poster','/get_avatar?name=' + $('#floatingSelect')[0].options[$('#floatingSelect')[0].selectedIndex].text)
+
+				 
 });
 
 	</script>
@@ -235,7 +282,7 @@ $( document ).ready(function() {
   <div class="container w-100  my-1">
 <div class="row">
 
-<video  width="256" height="256" id=player  controls  onplay="player_play(this)" onpause="player_pause(this)" onended="player_end(this)" ><source id=player_source src="" ></audio>
+<video  width="256" height="256" id=player    onplay="player_play(this)" onpause="player_pause(this)" onended="player_end(this)" ><source id=player_source src="" playsinline></audio>
 </div>
 </div>
 
