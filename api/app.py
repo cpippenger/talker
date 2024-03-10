@@ -44,8 +44,8 @@ DATABASE_HOST = os.environ.get('DATABASE_HOST',"127.0.0.1")
 SERVICE_PORT = os.environ.get('SERVICE_PORT',5000)
 SERVICE_HOST = os.environ.get('SERVICE_HOST',"0.0.0.0")
 SERVICE_DEBUG = os.environ.get('SERVICE_DEBUG','True')
-SWC_TTS_URL=os.environ.get('SWC_TTS_URL',"http://localhost:8100/tts")
-COQ_TTS_URL=os.environ.get('COQ_TTS_URL',"http://localhost:6666/api/tts?text=")
+SWC_TTS_URL=os.environ.get('SWC_TTS_URL',"http://localhost:8100/tts") 
+SADTALKER_URL=os.environ.get('SADTALKER_URL',"http://localhost:7666/generate_avatar_message")
 
 app = Flask(__name__,static_folder="cache")
 app.config['SQLALCHEMY_DATABASE_URI'] = f'{DATABASE_TYPE}://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@{DATABASE_HOST}/{DATABASE_SCHEMA}'
@@ -53,43 +53,56 @@ db = SQLAlchemy(app)
 engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
 SessionClass = sessionmaker(bind=engine)
 
+def web_post(url,payload):
+    try:
+        r = requests.post(url, json=payload)
+        r.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        return ("ERROR: " + str(err)) 
+    except requests.exceptions.HTTPError as errh:
+        return ("ERROR: swc_tts Http Error:",errh)
+    except requests.exceptions.ConnectionError as errc:
+        return ("ERROR: swc_tts Error Connecting:")
+    except requests.exceptions.Timeout as errt:
+        return ("ERROR: swc_tts Timeout Error:")
+    return r
+    
+
+def get_avatar_video(str_avatar_name,str_wav_filepath):
+    print('balls data',str_avatar_name,str_wav_filepath)
+    f = open(str_wav_filepath,'rb')
+    try:
+        r = requests.post(SADTALKER_URL,files={'wav_file':f},data={'name':str_avatar_name})
+        r.raise_for_status()
+    except requests.exceptions.RequestException as err:
+        return ("ERROR: " + str(err))
+    except requests.exceptions.HTTPError as errh:
+        return ("ERROR: get_avatar_video Http Error:",errh)
+    except requests.exceptions.ConnectionError as errc:
+        return ("ERROR: get_avatar_video Error Connecting:")
+    except requests.exceptions.Timeout as errt:
+        return ("ERROR: get_avatar_video Timeout Error:")
+    f.close()
+    video_file = 'cache/'+str(uuid4())+'.mp4'
+    f = open(video_file,'wb')
+    f.write(r.content)
+    f.close()
+    
+    return video_file
+
 
 # im gonna clean up the exception handling once i figure out what exceptions are what, seems weird
 # cuz the repeated code is nasty
 def swc_tts(str_voice,str_message,str_filename):
     payload = {'text': str_message, 'time': 'time', 'priority' : '100.0','voice_clone':str_voice}
     logger.warning(payload)
-    try:
-        r = requests.post(SWC_TTS_URL, json=payload)
-        r.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        return ("ERROR: " + str(err)) # being lazy this code sorta works
-    except requests.exceptions.HTTPError as errh:
-        return ("ERROR: swc_tts Http Error:",errh)
-    except requests.exceptions.ConnectionError as errc:
-        return ("ERROR: swc_tts Error Connecting:")
-    except requests.exceptions.Timeout as errt:
-        return ("ERROR: swc_tts Timeout Error:")     
+    r = web_post(SWC_TTS_URL,payload)
     open(str_filename, 'wb').write(r.content)    
     data=r.json()["wav"]
     scaled = np.int16(data / np.max(np.abs(data)) * 32767)
     write(str_filename, int(r.json()["rate"]), scaled)
-    return str_filename
+    return get_avatar_video(str_voice,str_filename)
 
-def coq_tts(message,filename):
-    try:
-        r = requests.get(COQ_TTS_URL + message, allow_redirects=True)
-        r.raise_for_status()
-    except requests.exceptions.RequestException as err:
-        return ("ERROR: coq_tts OOps: Something Else") # being lazy this code sorta works
-    except requests.exceptions.HTTPError as errh:
-        return ("ERROR: coq_tts Http Error:",errh)
-    except requests.exceptions.ConnectionError as errc:
-        return ("ERROR: coq_tts Error Connecting:")
-    except requests.exceptions.Timeout as errt:
-        return ("ERROR: coq_tts Timeout Error:")     
-    open(filename, 'wb').write(r.content)
-    return filename
 
 
 def eleven_tts (message,filename,voice):
@@ -110,24 +123,9 @@ def eleven_tts (message,filename,voice):
 # - should be storing in /cache for playback
 # - prefered to prefix file name with static id of source e.g coqtts_<id>
 # - must be at least one end point
+endpoints={"trump": lambda str_message,str_filename: swc_tts("trump",str_message,str_filename)}
 
-
-def get_swc_endpoints():
-    new_endpoints={}
-    # not handling exceptoins here because i want a fatal error on no connect
-    r = requests.get(SWC_TTS_URL.replace('tts','get_voice_list'),allow_redirects=True)
-    for voice in r.json(): 
-            new_endpoints["swc_"+voice] = lambda str_message,str_filename,tmptmp=voice: swc_tts(tmptmp,str_message,str_filename)
-            new_endpoints.update({
-    "coq_tts": lambda str_message,str_filename: coq_tts(str_message,str_filename) ,
-    "fake_tts": lambda str_message,str_filename: "cache/dummy.wav" ,
-    "forced_error": lambda str_message,str_filename: "ERROR: you did this on purpose",
-    "11tts_Rachel" : lambda str_message,str_filename: eleven_tts(str_message,str_filename,"Rachel")
-    })
-    return new_endpoints
-endpoints=get_swc_endpoints()
-
-current_endpoint="coq_tts"# hardcoded for now, not sure what to do about this,
+current_endpoint="trump"# hardcoded for now, not sure what to do about this,
                             # was using the first of the array
 def install():
     try:
