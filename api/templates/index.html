@@ -109,7 +109,8 @@
 		function start_queue() {
 			if(global_queue.length > 0)
 			{
-				play(document.getElementById(global_queue.shift()))
+				// this is to fix a bug
+				play($(document.getElementById(global_queue.shift())).find('a')[0])
 			}
 		}
 
@@ -213,9 +214,7 @@
 					start_queue();
 				}
 				}});
-				if($('#autoplay').text() ==  "Auto Play: On"){
-					play_unseen();
-				}
+
 
 		}
 		 // this is all very lazy lol
