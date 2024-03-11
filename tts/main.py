@@ -108,7 +108,7 @@ except sqlalchemy.exc.ProgrammingError:
 # Init voicebox
 voice_box = VoiceBox(
             logger=logger, 
-            config_filename="voicebox_config_tortoise.json"
+            config_filename="voicebox_config.json"
 )
 
 # Init api
@@ -125,6 +125,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+replace_list = [
+    ("'", "'"),
+    ("We're", "We are"),
+    ("we're", "we are"),
+    ("it's", "it is"),
+    ("It's", "It is"),
+    ("I'll", "I will"),
+    ("i'll", "i will"),
+    ("Major: nse", "Major:")
+]
+remove_list = ["#", "*", "</s>", 
+               '"', 
+               "@", "$", "%", 
+               "^", "&", "*", 
+               "(", ")", 
+               #",", 
+               "<unk>", 
+               ":", ";", "\\n", 
+               "nse:", "😁", "😉"]
 
 class Message(BaseModel):
     command: str 
@@ -371,7 +390,7 @@ def push_to_queue(
 
 def get_tts_with_retry(
         text:str,
-        should_retry:bool=False,
+        should_retry:bool=True,
         speed:float=1.01,
         voice_clone:str="major",
         is_log_retries:bool=True
@@ -478,7 +497,7 @@ def process_text(
         speed:float=None,
         priority:str=None, 
         request_time:str=None,
-        should_retry:bool=False,
+        should_retry:bool=True,
         voice_clone:str="major"
     ):
     """
@@ -515,14 +534,12 @@ def process_text(
         return []
 
 
-    text = text.replace("'", "'")
-    text = text.replace("We're", "We are")
-    text = text.replace("we're", "we are")
-    text = text.replace("it's", "it is")
-    text = text.replace("It's", "It is")
-    text = text.replace("I'll", "I will")
-    text = text.replace("i'll", "i will")
-    
+    # Filter text
+    for item in replace_list:
+        text = text.replace(item[0], item[1])
+    for item in remove_list:
+        text = text.replace(item,"")
+        
     # If given voice is in catalogue
     if voice_clone in voice_catalogue:
         logger.debug(f"TTS.process_text(): Using voice from catalogue {voice_clone} : {voice_catalogue[voice_clone].file_list}")
@@ -660,6 +677,18 @@ def process_text(
                     except redis.exceptions.ConnectionError:
                         logger.error(f"TTS.main.process_text(): Error sending response to redis")
 
+                gen_audio = GeneratedAudio(
+                    model_name=voice_box.config["model"]["name"],
+                    voice_name=voice_clone,
+                    text=chunk,
+                    wav=json_wav
+                )
+                # Push new voice to db
+                session = SessionClass(expire_on_commit=True)
+                session.add(gen_audio)
+                session.commit()
+                session.close()
+
             # Save chunk wav
             full_wav.append(wav)
 
@@ -710,27 +739,17 @@ def process_text(
             except redis.exceptions.ConnectionError:
                 logger.error(f"TTS.main.process_text(): Error sending response to redis")
         
-
-    #run_log = {
-    #    "id" : uuid4()
-    #}
-
-
-    gen_audio = GeneratedAudio(
-        model_name=voice_box.config["model"]["name"],
-        voice_name=voice_clone,
-        text=text,
-        wav=wav
-    )
-
-    # Push new voice to db
-    session = SessionClass(expire_on_commit=True)
-    session.add(gen_audio)
-    session.commit()
-    #except:
-    #    logger.error(f"TTS(): Could not push voice to db")
-
-    session.close()
+        gen_audio = GeneratedAudio(
+            model_name=voice_box.config["model"]["name"],
+            voice_name=voice_clone,
+            text=text,
+            wav=json_wav
+        )
+        # Push new voice to db
+        session = SessionClass(expire_on_commit=True)
+        session.add(gen_audio)
+        session.commit()
+        session.close()
 
     return wav
 
